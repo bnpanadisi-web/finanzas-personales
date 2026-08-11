@@ -7,6 +7,10 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // Desactiva la verificación exhaustiva de tipos en el build de producción
+  experimental: {
+    typedRoutes: false,
+  },
 };
 
 export default nextConfig;
