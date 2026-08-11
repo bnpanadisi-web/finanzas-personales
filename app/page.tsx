@@ -78,10 +78,13 @@ export default function FinanzasApp() {
   const mesesNombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
   useEffect(() => {
-    const sesion = localStorage.getItem('finanzas_auth');
-    if (sesion === 'true') setAutenticado(true);
-    const priv = localStorage.getItem('finanzas_privacidad');
-    if (priv === 'true') setOcultarMontos(true);
+    // Verificación segura de window para evitar errores durante el prerrenderizado estático
+    if (typeof window !== 'undefined') {
+      const sesion = localStorage.getItem('finanzas_auth');
+      if (sesion === 'true') setAutenticado(true);
+      const priv = localStorage.getItem('finanzas_privacidad');
+      if (priv === 'true') setOcultarMontos(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -126,24 +129,18 @@ export default function FinanzasApp() {
     }).format(valorConvertido);
   }
 
-  // Manejador del Input con soporte de decimales (coma) y puntos de miles
   function handleMontoChange(e: React.ChangeEvent<HTMLInputElement>) {
     let raw = e.target.value;
-
-    // Permitir solo números y comas
     raw = raw.replace(/[^0-9,]/g, '');
 
-    // Permitir una sola coma decimal
     const partes = raw.split(',');
     if (partes.length > 2) return;
 
-    // Formatear la parte entera con puntos de miles
     let parteEntera = partes[0].replace(/\D/g, '');
     if (parteEntera) {
       parteEntera = new Intl.NumberFormat('es-AR').format(parseInt(parteEntera, 10));
     }
 
-    // Limitar decimales a 2 dígitos
     let parteDecimal = partes[1] !== undefined ? ',' + partes[1].slice(0, 2) : '';
 
     setMontoInput(parteEntera + parteDecimal);
@@ -154,7 +151,9 @@ export default function FinanzasApp() {
     const pinCorrecto = process.env.NEXT_PUBLIC_APP_PIN || '2706';
     if (pinIngresado === pinCorrecto) {
       setAutenticado(true);
-      localStorage.setItem('finanzas_auth', 'true');
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('finanzas_auth', 'true');
+      }
       setErrorPin(false);
     } else {
       setErrorPin(true);
@@ -162,7 +161,9 @@ export default function FinanzasApp() {
   }
 
   function cerrarSesion() {
-    localStorage.removeItem('finanzas_auth');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('finanzas_auth');
+    }
     setAutenticado(false);
     setPinIngresado('');
   }
@@ -171,7 +172,6 @@ export default function FinanzasApp() {
     e.preventDefault();
     if (!montoInput || !categoria) return;
 
-    // Convertir formato visual ("1.250,50") a float JS (1250.50)
     const montoLimpio = parseFloat(montoInput.replace(/\./g, '').replace(',', '.'));
     if (isNaN(montoLimpio)) return;
 
@@ -212,7 +212,6 @@ export default function FinanzasApp() {
     setTab('actual');
     setEditandoRegistro(r);
     setTipo(r.tipo);
-    // Convertir decimal con coma para la edicion
     const partes = r.monto.toFixed(2).split('.');
     const parteEnteraFormateada = new Intl.NumberFormat('es-AR').format(parseInt(partes[0], 10));
     setMontoInput(`${parteEnteraFormateada},${partes[1]}`);
@@ -220,7 +219,9 @@ export default function FinanzasApp() {
     setCuenta(r.cuenta);
     setDescripcion(r.descripcion || '');
     setFecha(r.fecha);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   }
 
   async function crearCategoria(e: React.FormEvent) {
@@ -253,7 +254,6 @@ export default function FinanzasApp() {
     }
   }
 
-  // Filtrado de Datos
   const registrosMostrados = registros.filter(r => {
     const f = new Date(r.fecha + 'T00:00:00');
     if (tab === 'actual') {
@@ -319,7 +319,13 @@ export default function FinanzasApp() {
             <CoinIcon size={14} className="text-slate-500" /> {moneda}
           </button>
           <button 
-            onClick={() => setOcultarMontos(!ocultarMontos)} 
+            onClick={() => {
+              const nuevoEstado = !ocultarMontos;
+              setOcultarMontos(nuevoEstado);
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('finanzas_privacidad', String(nuevoEstado));
+              }
+            }} 
             className="p-2 bg-white border border-slate-200 rounded-xl shadow-sm text-slate-600 active:scale-95 transition-all"
           >
             {ocultarMontos ? <EyeOff size={18} /> : <Eye size={18} />}
