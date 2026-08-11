@@ -326,7 +326,6 @@ export default function FinanzasApp() {
   const entradasGastos = Object.entries(gastosPorCategoria);
   let acumuladoAngulo = 0;
 
-  // Clases dinámicas según el tema
   const cardBg = darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100';
   const inputBg = darkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-800';
 
@@ -403,13 +402,13 @@ export default function FinanzasApp() {
         </button>
       </div>
 
-      {/* Filtro Historial */}
+      {/* Filtro Historial con el mismo ancho que las demás tarjetas */}
       {tab === 'historial' && (
-        <div className={`${cardBg} p-3 rounded-2xl shadow-sm border mb-6 flex gap-2 w-full`}>
+        <div className={`${cardBg} p-4 rounded-2xl shadow-sm border mb-6 flex gap-2 w-full`}>
           <select
             value={mesFiltro}
             onChange={e => setMesFiltro(Number(e.target.value))}
-            className={`flex-1 p-2 border rounded-xl text-sm font-semibold outline-none ${inputBg}`}
+            className={`flex-1 p-2.5 border rounded-xl text-sm font-semibold outline-none ${inputBg}`}
           >
             {mesesNombres.map((m, idx) => (
               <option key={m} value={idx + 1}>{m}</option>
@@ -418,7 +417,7 @@ export default function FinanzasApp() {
           <select
             value={anioFiltro}
             onChange={e => setAnioFiltro(Number(e.target.value))}
-            className={`w-28 p-2 border rounded-xl text-sm font-semibold outline-none ${inputBg}`}
+            className={`w-32 p-2.5 border rounded-xl text-sm font-semibold outline-none ${inputBg}`}
           >
             {[2025, 2026, 2027].map(a => (
               <option key={a} value={a}>{a}</option>
@@ -429,15 +428,15 @@ export default function FinanzasApp() {
 
       {/* Tarjetas Resumen */}
       <div className="grid grid-cols-3 gap-2 mb-6 text-center w-full">
-        <div className={`${cardBg} p-3 rounded-xl shadow-sm border`}>
+        <div className={`${cardBg} p-3 rounded-2xl shadow-sm border`}>
           <p className="text-xs text-slate-400 font-medium">Ingresos</p>
           <p className="font-bold text-emerald-500 text-xs sm:text-sm">{formatearMoneda(totalIngresos)}</p>
         </div>
-        <div className={`${cardBg} p-3 rounded-xl shadow-sm border`}>
+        <div className={`${cardBg} p-3 rounded-2xl shadow-sm border`}>
           <p className="text-xs text-slate-400 font-medium">Gastos</p>
           <p className="font-bold text-rose-500 text-xs sm:text-sm">{formatearMoneda(totalGastos)}</p>
         </div>
-        <div className={`${cardBg} p-3 rounded-xl shadow-sm border`}>
+        <div className={`${cardBg} p-3 rounded-2xl shadow-sm border`}>
           <p className="text-xs text-slate-400 font-medium">Balance</p>
           <p className={`font-bold text-xs sm:text-sm ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>
             {formatearMoneda(totalIngresos - totalGastos)}
