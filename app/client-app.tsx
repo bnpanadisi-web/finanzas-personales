@@ -6,7 +6,7 @@ import {
   ShoppingCart, Home as HouseIcon, Zap, Utensils, Car, HeartPulse, Film, Tag, Wallet,
   Briefcase, TrendingUp, DollarSign, Dumbbell, Pizza, Coffee, Truck, Bike, Plane,
   GraduationCap, Gift, Smartphone, X, Edit2, Trash2, History, LayoutDashboard,
-  Eye, EyeOff, DollarSign as CoinIcon
+  Eye, EyeOff, DollarSign as CoinIcon, Sun, Moon
 } from 'lucide-react';
 
 const ICONOS_DISPONIBLES: Record<string, any> = {
@@ -42,19 +42,25 @@ export default function FinanzasApp() {
   const [autenticado, setAutenticado] = useState(false);
   const [errorPin, setErrorPin] = useState(false);
 
+  // Modo Oscuro, Privacidad y Moneda
+  const [darkMode, setDarkMode] = useState(false);
   const [ocultarMontos, setOcultarMontos] = useState(false);
   const [moneda, setMoneda] = useState<'ARS' | 'USD'>('ARS');
   const [cotizacionDolar, setCotizacionDolar] = useState<number>(1000);
 
+  // Navegación
   const [tab, setTab] = useState<'actual' | 'historial'>('actual');
 
+  // Datos
   const [registros, setRegistros] = useState<Registro[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
 
+  // Filtros Historial
   const fechaHoy = new Date();
   const [mesFiltro, setMesFiltro] = useState<number>(fechaHoy.getMonth() + 1);
   const [anioFiltro, setAnioFiltro] = useState<number>(fechaHoy.getFullYear());
 
+  // Formulario Movimiento
   const [tipo, setTipo] = useState<'gasto' | 'ingreso'>('gasto');
   const [montoInput, setMontoInput] = useState('');
   const [categoria, setCategoria] = useState('');
@@ -62,6 +68,7 @@ export default function FinanzasApp() {
   const [descripcion, setDescripcion] = useState('');
   const [fecha, setFecha] = useState(fechaHoy.toISOString().split('T')[0]);
 
+  // Modales
   const [mostrarModalCat, setMostrarModalCat] = useState(false);
   const [nuevaCatNombre, setNuevaCatNombre] = useState('');
   const [nuevaCatIcono, setNuevaCatIcono] = useState('Dumbbell');
@@ -77,6 +84,8 @@ export default function FinanzasApp() {
       if (sesion === 'true') setAutenticado(true);
       const priv = localStorage.getItem('finanzas_privacidad');
       if (priv === 'true') setOcultarMontos(true);
+      const darkPref = localStorage.getItem('finanzas_dark');
+      if (darkPref === 'true') setDarkMode(true);
     }
   }, []);
 
@@ -96,6 +105,14 @@ export default function FinanzasApp() {
 
     const { data: regData } = await supabase.from('registros').select('*').order('fecha', { ascending: false });
     if (regData) setRegistros(regData);
+  }
+
+  function toggleDarkMode() {
+    const nuevoEstado = !darkMode;
+    setDarkMode(nuevoEstado);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('finanzas_dark', String(nuevoEstado));
+    }
   }
 
   function toggleMoneda() {
@@ -268,22 +285,32 @@ export default function FinanzasApp() {
 
   if (!autenticado) {
     return (
-      <main className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-        <form onSubmit={validarPin} className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-sm text-center space-y-4">
-          <div className="bg-slate-100 p-3 rounded-full w-12 h-12 mx-auto flex items-center justify-center text-slate-800">
+      <main className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-200 ${
+        darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-900 text-slate-800'
+      }`}>
+        <form onSubmit={validarPin} className={`p-6 rounded-2xl shadow-xl w-full max-w-sm text-center space-y-4 ${
+          darkMode ? 'bg-slate-900 text-slate-100 border border-slate-800' : 'bg-white text-slate-800'
+        }`}>
+          <div className={`p-3 rounded-full w-12 h-12 mx-auto flex items-center justify-center ${
+            darkMode ? 'bg-slate-800 text-slate-100' : 'bg-slate-100 text-slate-800'
+          }`}>
             <Lock size={24} />
           </div>
-          <h1 className="text-xl font-bold text-slate-800">Acceso a Finanzas</h1>
+          <h1 className="text-xl font-bold">Acceso a Finanzas</h1>
           <input
             type="password"
             placeholder="Ingrese PIN"
             value={pinIngresado}
             onChange={e => setPinIngresado(e.target.value)}
-            className="w-full p-3 border rounded-xl text-center text-2xl tracking-widest outline-none focus:ring-2 focus:ring-slate-800"
+            className={`w-full p-3 border rounded-xl text-center text-2xl tracking-widest outline-none ${
+              darkMode ? 'bg-slate-800 border-slate-700 text-white focus:ring-slate-600' : 'bg-white border-slate-200 focus:ring-slate-800'
+            }`}
             maxLength={6}
           />
-          {errorPin && <p className="text-red-500 text-sm">PIN Incorrecto</p>}
-          <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold">
+          {errorPin && <p className="text-rose-500 text-sm font-semibold">PIN Incorrecto</p>}
+          <button type="submit" className={`w-full py-3 rounded-xl font-bold transition-all active:scale-95 ${
+            darkMode ? 'bg-slate-100 text-slate-900 hover:bg-white' : 'bg-slate-900 text-white hover:bg-slate-800'
+          }`}>
             Ingresar
           </button>
         </form>
@@ -299,14 +326,31 @@ export default function FinanzasApp() {
   const entradasGastos = Object.entries(gastosPorCategoria);
   let acumuladoAngulo = 0;
 
+  // Clases dinámicas según el tema
+  const cardBg = darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100';
+  const inputBg = darkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-800';
+
   return (
-    <main className="max-w-md mx-auto p-4 bg-slate-50 min-h-screen text-slate-800 pb-20">
+    <main className={`max-w-md mx-auto p-4 min-h-screen pb-20 transition-colors duration-200 ${
+      darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'
+    }`}>
+      {/* Header */}
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-xl font-bold">Mis Finanzas</h1>
         <div className="flex items-center gap-2">
           <button 
+            onClick={toggleDarkMode} 
+            className={`p-2 border rounded-xl shadow-sm transition-all active:scale-95 ${
+              darkMode ? 'bg-slate-900 border-slate-800 text-yellow-400' : 'bg-white border-slate-200 text-slate-600'
+            }`}
+          >
+            {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+          <button 
             onClick={toggleMoneda} 
-            className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl shadow-sm text-xs font-bold text-slate-700 flex items-center gap-1 active:scale-95 transition-all"
+            className={`px-2.5 py-1.5 border rounded-xl shadow-sm text-xs font-bold flex items-center gap-1 active:scale-95 transition-all ${
+              darkMode ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-white border-slate-200 text-slate-700'
+            }`}
           >
             <CoinIcon size={14} className="text-slate-500" /> {moneda}
           </button>
@@ -318,24 +362,31 @@ export default function FinanzasApp() {
                 localStorage.setItem('finanzas_privacidad', String(nuevoEstado));
               }
             }} 
-            className="p-2 bg-white border border-slate-200 rounded-xl shadow-sm text-slate-600 active:scale-95 transition-all"
+            className={`p-2 border rounded-xl shadow-sm active:scale-95 transition-all ${
+              darkMode ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-white border-slate-200 text-slate-600'
+            }`}
           >
             {ocultarMontos ? <EyeOff size={18} /> : <Eye size={18} />}
           </button>
           <button 
             onClick={cerrarSesion} 
-            className="p-2 bg-white border border-slate-200 rounded-xl shadow-sm text-slate-600 active:scale-95 transition-all"
+            className={`p-2 border rounded-xl shadow-sm active:scale-95 transition-all ${
+              darkMode ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-white border-slate-200 text-slate-600'
+            }`}
           >
             <LogOut size={18} />
           </button>
         </div>
       </div>
 
-      <div className="flex bg-slate-200 p-1 rounded-xl mb-6">
+      {/* Tabs */}
+      <div className={`flex p-1 rounded-xl mb-6 ${darkMode ? 'bg-slate-900' : 'bg-slate-200'}`}>
         <button
           onClick={() => setTab('actual')}
           className={`flex-1 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 transition-all ${
-            tab === 'actual' ? 'bg-white shadow text-slate-900' : 'text-slate-600'
+            tab === 'actual' 
+              ? (darkMode ? 'bg-slate-800 text-white shadow' : 'bg-white text-slate-900 shadow') 
+              : 'text-slate-400'
           }`}
         >
           <LayoutDashboard size={16} /> Mes Actual
@@ -343,19 +394,22 @@ export default function FinanzasApp() {
         <button
           onClick={() => setTab('historial')}
           className={`flex-1 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 transition-all ${
-            tab === 'historial' ? 'bg-white shadow text-slate-900' : 'text-slate-600'
+            tab === 'historial' 
+              ? (darkMode ? 'bg-slate-800 text-white shadow' : 'bg-white text-slate-900 shadow') 
+              : 'text-slate-400'
           }`}
         >
           <History size={16} /> Historial
         </button>
       </div>
 
+      {/* Filtro Historial */}
       {tab === 'historial' && (
-        <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 mb-6 flex gap-2">
+        <div className={`${cardBg} p-3 rounded-2xl shadow-sm border mb-6 flex gap-2 w-full`}>
           <select
             value={mesFiltro}
             onChange={e => setMesFiltro(Number(e.target.value))}
-            className="flex-1 p-2 border rounded-xl bg-white text-sm font-semibold"
+            className={`flex-1 p-2 border rounded-xl text-sm font-semibold outline-none ${inputBg}`}
           >
             {mesesNombres.map((m, idx) => (
               <option key={m} value={idx + 1}>{m}</option>
@@ -364,7 +418,7 @@ export default function FinanzasApp() {
           <select
             value={anioFiltro}
             onChange={e => setAnioFiltro(Number(e.target.value))}
-            className="w-28 p-2 border rounded-xl bg-white text-sm font-semibold"
+            className={`w-28 p-2 border rounded-xl text-sm font-semibold outline-none ${inputBg}`}
           >
             {[2025, 2026, 2027].map(a => (
               <option key={a} value={a}>{a}</option>
@@ -373,25 +427,29 @@ export default function FinanzasApp() {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-2 mb-6 text-center">
-        <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-100">
+      {/* Tarjetas Resumen */}
+      <div className="grid grid-cols-3 gap-2 mb-6 text-center w-full">
+        <div className={`${cardBg} p-3 rounded-xl shadow-sm border`}>
           <p className="text-xs text-slate-400 font-medium">Ingresos</p>
-          <p className="font-bold text-emerald-600 text-xs sm:text-sm">{formatearMoneda(totalIngresos)}</p>
+          <p className="font-bold text-emerald-500 text-xs sm:text-sm">{formatearMoneda(totalIngresos)}</p>
         </div>
-        <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-100">
+        <div className={`${cardBg} p-3 rounded-xl shadow-sm border`}>
           <p className="text-xs text-slate-400 font-medium">Gastos</p>
-          <p className="font-bold text-rose-600 text-xs sm:text-sm">{formatearMoneda(totalGastos)}</p>
+          <p className="font-bold text-rose-500 text-xs sm:text-sm">{formatearMoneda(totalGastos)}</p>
         </div>
-        <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-100">
+        <div className={`${cardBg} p-3 rounded-xl shadow-sm border`}>
           <p className="text-xs text-slate-400 font-medium">Balance</p>
-          <p className="font-bold text-slate-800 text-xs sm:text-sm">{formatearMoneda(totalIngresos - totalGastos)}</p>
+          <p className={`font-bold text-xs sm:text-sm ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>
+            {formatearMoneda(totalIngresos - totalGastos)}
+          </p>
         </div>
       </div>
 
+      {/* Gráfico de Torta en Historial */}
       {tab === 'historial' && (
-        <div className="bg-white p-4 rounded-2xl shadow-sm mb-6 border border-slate-100">
+        <div className={`${cardBg} p-4 rounded-2xl shadow-sm mb-6 border w-full`}>
           <div className="flex items-center gap-2 mb-4">
-            <PieIcon size={18} className="text-slate-600" />
+            <PieIcon size={18} className="text-slate-400" />
             <h2 className="font-bold text-sm">
               Gráfico de Gastos ({mesesNombres[mesFiltro - 1]} {anioFiltro})
             </h2>
@@ -427,7 +485,7 @@ export default function FinanzasApp() {
                 </svg>
                 <div className="absolute text-center">
                   <p className="text-[10px] text-slate-400 font-bold">GASTOS</p>
-                  <p className="text-[11px] font-bold text-slate-800">{formatearMoneda(totalGastos)}</p>
+                  <p className={`text-[11px] font-bold ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{formatearMoneda(totalGastos)}</p>
                 </div>
               </div>
 
@@ -443,7 +501,7 @@ export default function FinanzasApp() {
                         <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
                         <RenderIcono nombre={catObj?.icono || 'Tag'} size={14} /> {cat}
                       </span>
-                      <span className="font-bold text-slate-600">{formatearMoneda(monto)} ({porcentaje}%)</span>
+                      <span className="font-bold text-slate-400">{formatearMoneda(monto)} ({porcentaje}%)</span>
                     </div>
                   );
                 })}
@@ -453,8 +511,9 @@ export default function FinanzasApp() {
         </div>
       )}
 
+      {/* Formulario en Mes Actual */}
       {tab === 'actual' && (
-        <form onSubmit={handleSubmit} className="bg-white p-4 rounded-2xl shadow-sm space-y-3 mb-6 border border-slate-100">
+        <form onSubmit={handleSubmit} className={`${cardBg} p-4 rounded-2xl shadow-sm space-y-3 mb-6 border w-full`}>
           <div className="flex justify-between items-center mb-1">
             <span className="text-xs font-bold text-slate-400">
               {editandoRegistro ? '✏️ EDITANDO REGISTRO' : '➕ NUEVO MOVIMIENTO'}
@@ -472,11 +531,15 @@ export default function FinanzasApp() {
 
           <div className="flex gap-2">
             <button type="button" onClick={() => setTipo('gasto')}
-              className={`flex-1 py-2 rounded-xl font-bold flex items-center justify-center gap-1 ${tipo === 'gasto' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
+              className={`flex-1 py-2 rounded-xl font-bold flex items-center justify-center gap-1 transition-all ${
+                tipo === 'gasto' ? 'bg-rose-500 text-white' : (darkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600')
+              }`}>
               <ArrowDownCircle size={16} /> Gasto
             </button>
             <button type="button" onClick={() => setTipo('ingreso')}
-              className={`flex-1 py-2 rounded-xl font-bold flex items-center justify-center gap-1 ${tipo === 'ingreso' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
+              className={`flex-1 py-2 rounded-xl font-bold flex items-center justify-center gap-1 transition-all ${
+                tipo === 'ingreso' ? 'bg-emerald-500 text-white' : (darkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600')
+              }`}>
               <ArrowUpCircle size={16} /> Ingreso
             </button>
           </div>
@@ -486,51 +549,60 @@ export default function FinanzasApp() {
             placeholder="Monto ($)" 
             value={montoInput} 
             onChange={handleMontoChange}
-            className="w-full p-3 border rounded-xl text-xl font-bold text-center outline-none focus:ring-2 focus:ring-slate-800" 
+            className={`w-full p-3 border rounded-xl text-xl font-bold text-center outline-none focus:ring-2 ${
+              darkMode ? 'bg-slate-800 border-slate-700 text-white focus:ring-slate-600' : 'bg-white border-slate-200 focus:ring-slate-800'
+            }`} 
             required 
           />
 
           <div className="grid grid-cols-2 gap-2">
             <div className="flex gap-1">
-              <select value={categoria} onChange={e => setCategoria(e.target.value)} className="p-2 border rounded-xl bg-white w-full text-sm font-semibold">
+              <select value={categoria} onChange={e => setCategoria(e.target.value)} className={`p-2 border rounded-xl w-full text-sm font-semibold outline-none ${inputBg}`}>
                 {categorias.filter(c => c.tipo === tipo).map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
               </select>
-              <button type="button" onClick={() => setMostrarModalCat(true)} className="p-2 bg-slate-100 rounded-xl text-slate-700">
+              <button type="button" onClick={() => setMostrarModalCat(true)} className={`p-2 border rounded-xl ${darkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}>
                 <Plus size={18} />
               </button>
             </div>
-            <select value={cuenta} onChange={e => setCuenta(e.target.value)} className="p-2 border rounded-xl bg-white text-sm font-semibold">
+            <select value={cuenta} onChange={e => setCuenta(e.target.value)} className={`p-2 border rounded-xl text-sm font-semibold outline-none ${inputBg}`}>
               {cuentas.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <input type="text" placeholder="Descripción opcional" value={descripcion} onChange={e => setDescripcion(e.target.value)}
-              className="p-2.5 border rounded-xl text-sm outline-none" />
+              className={`p-2.5 border rounded-xl text-sm outline-none ${inputBg}`} />
             <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
-              className="p-2.5 border rounded-xl text-sm bg-white outline-none" required />
+              className={`p-2.5 border rounded-xl text-sm outline-none ${inputBg}`} required />
           </div>
 
-          <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold">
+          <button type="submit" className={`w-full py-3 rounded-xl font-bold transition-all active:scale-95 ${
+            darkMode ? 'bg-slate-100 text-slate-900 hover:bg-white' : 'bg-slate-900 text-white hover:bg-slate-800'
+          }`}>
             {editandoRegistro ? 'Actualizar Registro' : 'Guardar Movimiento'}
           </button>
         </form>
       )}
 
+      {/* Lista de Registros */}
       <h2 className="font-bold text-sm mb-3">
         Movimientos ({tab === 'actual' ? 'Mes Actual' : `${mesesNombres[mesFiltro - 1]} ${anioFiltro}`})
       </h2>
 
-      <div className="space-y-2">
+      <div className="space-y-2 w-full">
         {registrosMostrados.length === 0 ? (
           <p className="text-center text-xs text-slate-400 py-6">No hay registros en este período</p>
         ) : (
           registrosMostrados.map(r => {
             const catObj = categorias.find(c => c.nombre === r.categoria);
             return (
-              <div key={r.id} className="bg-white p-3 rounded-xl shadow-sm flex justify-between items-center border border-slate-100">
+              <div key={r.id} className={`${cardBg} p-3 rounded-xl shadow-sm flex justify-between items-center border w-full`}>
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-xl ${r.tipo === 'ingreso' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                  <div className={`p-2 rounded-xl ${
+                    r.tipo === 'ingreso' 
+                      ? (darkMode ? 'bg-emerald-950/60 text-emerald-400' : 'bg-emerald-50 text-emerald-600') 
+                      : (darkMode ? 'bg-rose-950/60 text-rose-400' : 'bg-rose-50 text-rose-600')
+                  }`}>
                     <RenderIcono nombre={catObj?.icono || 'Tag'} />
                   </div>
                   <div>
@@ -540,11 +612,11 @@ export default function FinanzasApp() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <span className={`font-bold text-sm ${r.tipo === 'ingreso' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  <span className={`font-bold text-sm ${r.tipo === 'ingreso' ? 'text-emerald-500' : 'text-rose-500'}`}>
                     {r.tipo === 'ingreso' ? '+' : '-'}{formatearMoneda(Number(r.monto))}
                   </span>
                   <div className="flex gap-1">
-                    <button onClick={() => iniciarEdicion(r)} className="p-1 text-slate-400 hover:text-slate-800">
+                    <button onClick={() => iniciarEdicion(r)} className="p-1 text-slate-400 hover:text-slate-200">
                       <Edit2 size={15} />
                     </button>
                     <button onClick={() => eliminarRegistro(r.id)} className="p-1 text-slate-400 hover:text-rose-500">
@@ -558,9 +630,10 @@ export default function FinanzasApp() {
         )}
       </div>
 
+      {/* Modal Nueva Categoría */}
       {mostrarModalCat && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <form onSubmit={crearCategoria} className="bg-white p-5 rounded-2xl w-full max-w-xs space-y-4 shadow-xl">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+          <form onSubmit={crearCategoria} className={`${cardBg} p-5 rounded-2xl w-full max-w-xs space-y-4 shadow-xl border`}>
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-lg">Nueva Categoría ({tipo})</h3>
               <button type="button" onClick={() => setMostrarModalCat(false)} className="text-slate-400">
@@ -573,13 +646,13 @@ export default function FinanzasApp() {
               placeholder="Nombre de la categoría"
               value={nuevaCatNombre}
               onChange={e => setNuevaCatNombre(e.target.value)}
-              className="w-full p-2.5 border rounded-xl text-sm outline-none"
+              className={`w-full p-2.5 border rounded-xl text-sm outline-none ${inputBg}`}
               required
             />
 
             <div>
-              <p className="text-xs font-semibold text-slate-500 mb-2">Selecciona un Ícono:</p>
-              <div className="grid grid-cols-4 gap-2 max-h-40 overflow-y-auto p-1 border rounded-xl">
+              <p className="text-xs font-semibold text-slate-400 mb-2">Selecciona un Ícono:</p>
+              <div className={`grid grid-cols-4 gap-2 max-h-40 overflow-y-auto p-1 border rounded-xl ${darkMode ? 'border-slate-800' : 'border-slate-200'}`}>
                 {Object.keys(ICONOS_DISPONIBLES).map(nombreIcono => (
                   <button
                     type="button"
@@ -587,8 +660,8 @@ export default function FinanzasApp() {
                     onClick={() => setNuevaCatIcono(nombreIcono)}
                     className={`p-2.5 rounded-xl border flex items-center justify-center transition-all ${
                       nuevaCatIcono === nombreIcono 
-                        ? 'bg-slate-900 text-white border-slate-900 scale-105' 
-                        : 'bg-slate-50 text-slate-700 border-slate-200'
+                        ? (darkMode ? 'bg-slate-100 text-slate-900 border-white scale-105' : 'bg-slate-900 text-white border-slate-900 scale-105')
+                        : (darkMode ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-50 text-slate-700 border-slate-200')
                     }`}
                   >
                     <RenderIcono nombre={nombreIcono} size={20} />
@@ -598,10 +671,14 @@ export default function FinanzasApp() {
             </div>
 
             <div className="flex gap-2 pt-2">
-              <button type="button" onClick={() => setMostrarModalCat(false)} className="flex-1 py-2 bg-slate-100 rounded-xl text-sm font-semibold">
+              <button type="button" onClick={() => setMostrarModalCat(false)} className={`flex-1 py-2 rounded-xl text-sm font-semibold ${
+                darkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-700'
+              }`}>
                 Cancelar
               </button>
-              <button type="submit" className="flex-1 py-2 bg-slate-900 text-white rounded-xl text-sm font-semibold">
+              <button type="submit" className={`flex-1 py-2 rounded-xl text-sm font-semibold ${
+                darkMode ? 'bg-slate-100 text-slate-900' : 'bg-slate-900 text-white'
+              }`}>
                 Guardar
               </button>
             </div>
