@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import dynamicImport from 'next/dynamic';
 import { supabase } from '@/lib/supabase';
 import { 
   Lock, LogOut, Plus, PieChart as PieIcon, ArrowUpCircle, ArrowDownCircle,
@@ -37,7 +38,7 @@ interface Registro {
   fecha: string;
 }
 
-export default function FinanzasApp() {
+function FinanzasApp() {
   const [pinIngresado, setPinIngresado] = useState('');
   const [autenticado, setAutenticado] = useState(false);
   const [errorPin, setErrorPin] = useState(false);
@@ -625,4 +626,12 @@ export default function FinanzasApp() {
       )}
     </main>
   );
+}
+
+const FinanzasAppCliente = dynamicImport(() => Promise.resolve(FinanzasApp), {
+  ssr: false,
+});
+
+export default function Page() {
+  return <FinanzasAppCliente />;
 }
