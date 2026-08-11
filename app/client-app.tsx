@@ -330,11 +330,11 @@ export default function FinanzasApp() {
   const inputBg = darkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-800';
 
   return (
-    <main className={`max-w-md mx-auto p-4 min-h-screen pb-20 transition-colors duration-200 ${
+    <main className={`w-full max-w-md mx-auto p-4 min-h-screen pb-20 transition-colors duration-200 box-border ${
       darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'
     }`}>
       {/* Header */}
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 w-full">
         <h1 className="text-xl font-bold">Mis Finanzas</h1>
         <div className="flex items-center gap-2">
           <button 
@@ -379,7 +379,7 @@ export default function FinanzasApp() {
       </div>
 
       {/* Tabs */}
-      <div className={`flex p-1 rounded-xl mb-6 ${darkMode ? 'bg-slate-900' : 'bg-slate-200'}`}>
+      <div className={`flex p-1 rounded-xl mb-4 w-full ${darkMode ? 'bg-slate-900' : 'bg-slate-200'}`}>
         <button
           onClick={() => setTab('actual')}
           className={`flex-1 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 transition-all ${
@@ -402,9 +402,9 @@ export default function FinanzasApp() {
         </button>
       </div>
 
-      {/* Filtro Historial con el mismo ancho que las demás tarjetas */}
+      {/* Filtro Historial (Se muestra Arriba de las Tarjetas) */}
       {tab === 'historial' && (
-        <div className={`${cardBg} p-4 rounded-2xl shadow-sm border mb-6 flex gap-2 w-full`}>
+        <div className={`${cardBg} p-3 rounded-2xl shadow-sm border mb-4 flex gap-2 w-full box-border`}>
           <select
             value={mesFiltro}
             onChange={e => setMesFiltro(Number(e.target.value))}
@@ -417,7 +417,7 @@ export default function FinanzasApp() {
           <select
             value={anioFiltro}
             onChange={e => setAnioFiltro(Number(e.target.value))}
-            className={`w-32 p-2.5 border rounded-xl text-sm font-semibold outline-none ${inputBg}`}
+            className={`w-28 p-2.5 border rounded-xl text-sm font-semibold outline-none ${inputBg}`}
           >
             {[2025, 2026, 2027].map(a => (
               <option key={a} value={a}>{a}</option>
@@ -426,8 +426,8 @@ export default function FinanzasApp() {
         </div>
       )}
 
-      {/* Tarjetas Resumen */}
-      <div className="grid grid-cols-3 gap-2 mb-6 text-center w-full">
+      {/* Tarjetas Resumen Únicas (Mismo Ancho 100% en Ambas Pestañas) */}
+      <div className="grid grid-cols-3 gap-2 mb-4 text-center w-full box-border">
         <div className={`${cardBg} p-3 rounded-2xl shadow-sm border`}>
           <p className="text-xs text-slate-400 font-medium">Ingresos</p>
           <p className="font-bold text-emerald-500 text-xs sm:text-sm">{formatearMoneda(totalIngresos)}</p>
@@ -446,7 +446,7 @@ export default function FinanzasApp() {
 
       {/* Gráfico de Torta en Historial */}
       {tab === 'historial' && (
-        <div className={`${cardBg} p-4 rounded-2xl shadow-sm mb-6 border w-full`}>
+        <div className={`${cardBg} p-4 rounded-2xl shadow-sm mb-6 border w-full box-border`}>
           <div className="flex items-center gap-2 mb-4">
             <PieIcon size={18} className="text-slate-400" />
             <h2 className="font-bold text-sm">
@@ -455,7 +455,7 @@ export default function FinanzasApp() {
           </div>
 
           {totalGastos === 0 ? (
-            <p className="text-center text-xs text-slate-400 py-4">No hay gastos para mostrar el gráfico en este período</p>
+            <p className="text-center text-xs text-slate-400 py-6">No hay gastos para mostrar el gráfico en este período</p>
           ) : (
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <div className="relative w-36 h-36 flex items-center justify-center flex-shrink-0">
@@ -512,7 +512,7 @@ export default function FinanzasApp() {
 
       {/* Formulario en Mes Actual */}
       {tab === 'actual' && (
-        <form onSubmit={handleSubmit} className={`${cardBg} p-4 rounded-2xl shadow-sm space-y-3 mb-6 border w-full`}>
+        <form onSubmit={handleSubmit} className={`${cardBg} p-4 rounded-2xl shadow-sm space-y-3 mb-6 border w-full box-border`}>
           <div className="flex justify-between items-center mb-1">
             <span className="text-xs font-bold text-slate-400">
               {editandoRegistro ? '✏️ EDITANDO REGISTRO' : '➕ NUEVO MOVIMIENTO'}
@@ -588,14 +588,14 @@ export default function FinanzasApp() {
         Movimientos ({tab === 'actual' ? 'Mes Actual' : `${mesesNombres[mesFiltro - 1]} ${anioFiltro}`})
       </h2>
 
-      <div className="space-y-2 w-full">
+      <div className="space-y-2 w-full box-border">
         {registrosMostrados.length === 0 ? (
           <p className="text-center text-xs text-slate-400 py-6">No hay registros en este período</p>
         ) : (
           registrosMostrados.map(r => {
             const catObj = categorias.find(c => c.nombre === r.categoria);
             return (
-              <div key={r.id} className={`${cardBg} p-3 rounded-xl shadow-sm flex justify-between items-center border w-full`}>
+              <div key={r.id} className={`${cardBg} p-3 rounded-xl shadow-sm flex justify-between items-center border w-full box-border`}>
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-xl ${
                     r.tipo === 'ingreso' 
