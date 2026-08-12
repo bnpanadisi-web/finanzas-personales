@@ -110,8 +110,9 @@ export default function FinanzasApp() {
       if (primera) setCategoria(primera.nombre);
     }
 
-    const { data: regData } = await supabase.from('registros').select('*').order('fecha', { ascending: false });
+    const { data: regData, error } = await supabase.from('registros').select('*').order('fecha', { ascending: false });
     if (regData) setRegistros(regData);
+    if (error) console.error('Error cargando registros:', error.message);
   }
 
   function toggleDarkMode() {
@@ -202,7 +203,7 @@ export default function FinanzasApp() {
       }
     } else {
       if (editandoRegistro) {
-        await supabase.from('registros').update({
+        const { error } = await supabase.from('registros').update({
           tipo,
           monto: montoLimpio,
           moneda: monedaGasto,
@@ -211,9 +212,11 @@ export default function FinanzasApp() {
           descripcion,
           fecha
         }).eq('id', editandoRegistro.id);
+        
+        if (error) alert('Error actualizando registro: ' + error.message);
         setEditandoRegistro(null);
       } else {
-        await supabase.from('registros').insert([{
+        const { error } = await supabase.from('registros').insert([{
           tipo,
           monto: montoLimpio,
           moneda: monedaGasto,
@@ -222,8 +225,10 @@ export default function FinanzasApp() {
           descripcion,
           fecha
         }]);
+
+        if (error) alert('Error guardando registro en Supabase: ' + error.message);
       }
-      cargarDatos();
+      await cargarDatos();
     }
 
     setMontoInput('');
@@ -323,24 +328,11 @@ export default function FinanzasApp() {
     }
   });
 
-  // Totales separados por Moneda
   const ingresosARS = registrosMostrados.filter(r => r.tipo === 'ingreso' && (r.moneda || 'ARS') === 'ARS').reduce((a, r) => a + Number(r.monto), 0);
   const ingresosUSD = registrosMostrados.filter(r => r.tipo === 'ingreso' && r.moneda === 'USD').reduce((a, r) => a + Number(r.monto), 0);
 
   const gastosARS = registrosMostrados.filter(r => r.tipo === 'gasto' && (r.moneda || 'ARS') === 'ARS').reduce((a, r) => a + Number(r.monto), 0);
   const gastosUSD = registrosMostrados.filter(r => r.tipo === 'gasto' && r.moneda === 'USD').reduce((a, r) => a + Number(r.monto), 0);
-
-  const gastosPorCategoria = registrosMostrados
-    .filter(r => r.tipo === 'gasto')
-    .reduce((acc: Record<string, { totalARS: number; totalUSD: number }>, r) => {
-      if (!acc[r.categoria]) acc[r.categoria] = { totalARS: 0, totalUSD: 0 };
-      if (r.moneda === 'USD') {
-        acc[r.categoria].totalUSD += Number(r.monto);
-      } else {
-        acc[r.categoria].totalARS += Number(r.monto);
-      }
-      return acc;
-    }, {});
 
   if (!autenticado) {
     return (
@@ -393,7 +385,6 @@ export default function FinanzasApp() {
       <div className="flex justify-between items-center mb-4 w-full">
         <h1 className="text-xl font-bold">{modoViaje ? '✈️ Modo Viaje' : 'Mis Finanzas'}</h1>
         <div className="flex items-center gap-1.5">
-          {/* Botón Modo Viaje */}
           <button 
             onClick={() => setModoViaje(!modoViaje)} 
             title="Activar/Desactivar Modo Viaje"
@@ -406,7 +397,6 @@ export default function FinanzasApp() {
             <Plane size={18} />
           </button>
 
-          {/* Botón Excel */}
           <button 
             onClick={exportarAExcel} 
             title="Exportar a Excel (CSV)"
@@ -417,7 +407,6 @@ export default function FinanzasApp() {
             <Download size={18} />
           </button>
 
-          {/* Botón Modo Oscuro */}
           <button 
             onClick={toggleDarkMode} 
             className={`p-2 border rounded-xl shadow-sm transition-all active:scale-95 ${
@@ -501,7 +490,7 @@ export default function FinanzasApp() {
         </div>
       )}
 
-      {/* Tarjetas Resumen en Monedas Directas */}
+      {/* Tarjetas Resumen */}
       <div className="grid grid-cols-3 gap-2 mb-4 text-center w-full box-border">
         <div className={`${cardBg} p-3 rounded-2xl shadow-sm border flex flex-col justify-center`}>
           <p className="text-[11px] text-slate-400 font-medium">Ingresos</p>
@@ -563,7 +552,7 @@ export default function FinanzasApp() {
             </button>
           </div>
 
-          {/* Campo de Monto + Selector de Moneda Directa */}
+          {/* Monto + Moneda */}
           <div className="flex gap-2">
             <input 
               type="text" 
@@ -649,9 +638,13 @@ export default function FinanzasApp() {
                     <RenderIcono nombre={catObj?.icono || 'Tag'} />
                   </div>
                   <div>
-                    <p className="font-bold text-sm">{r.categoria}</p>
-                    <p className="text-xs text-slate-400">
-                      📅 {r.fecha} • <span className="italic">{r.descripcion || r.cuenta}</span>
+                    <p className="font-bold text-sm">{r.categoria} {r.descripcion ? `• ${r.descripcion}` : ''}</p>
+                    {/* Fecha Ubicada Debajo del Movimiento y Debajo el Modo de Pago */}
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      📅 {r.fecha}
+                    </p>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      💳 {r.cuenta}
                     </p>
                   </div>
                 </div>
