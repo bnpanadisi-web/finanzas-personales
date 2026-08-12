@@ -817,4 +817,4 @@ export default function FinanzasApp() {
       )}
     </main>
   );
-}
+}// update chart
