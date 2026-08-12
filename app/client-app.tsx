@@ -6,7 +6,7 @@ import {
   ShoppingCart, Home as HouseIcon, Zap, Utensils, Car, HeartPulse, Film, Tag, Wallet,
   Briefcase, TrendingUp, DollarSign, Dumbbell, Pizza, Coffee, Truck, Bike, Plane,
   GraduationCap, Gift, Smartphone, X, Edit2, Trash2, History, LayoutDashboard,
-  Eye, EyeOff, DollarSign as CoinIcon, Sun, Moon, Download, Printer, Tv, BookOpen
+  Eye, EyeOff, Sun, Moon, Download, Printer, Tv, BookOpen
 } from 'lucide-react';
 
 const ICONOS_DISPONIBLES: Record<string, any> = {
@@ -334,6 +334,19 @@ export default function FinanzasApp() {
   const gastosARS = registrosMostrados.filter(r => r.tipo === 'gasto' && (r.moneda || 'ARS') === 'ARS').reduce((a, r) => a + Number(r.monto), 0);
   const gastosUSD = registrosMostrados.filter(r => r.tipo === 'gasto' && r.moneda === 'USD').reduce((a, r) => a + Number(r.monto), 0);
 
+  // Gastos Agrupados por Categoría para el Gráfico
+  const gastosPorCategoria = registrosMostrados
+    .filter(r => r.tipo === 'gasto')
+    .reduce((acc: Record<string, { totalARS: number; totalUSD: number }>, r) => {
+      if (!acc[r.categoria]) acc[r.categoria] = { totalARS: 0, totalUSD: 0 };
+      if (r.moneda === 'USD') {
+        acc[r.categoria].totalUSD += Number(r.monto);
+      } else {
+        acc[r.categoria].totalARS += Number(r.monto);
+      }
+      return acc;
+    }, {});
+
   if (!autenticado) {
     return (
       <main className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-200 ${
@@ -376,6 +389,9 @@ export default function FinanzasApp() {
 
   const cardBg = darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100';
   const inputBg = darkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-800';
+
+  const entradasGastos = Object.entries(gastosPorCategoria);
+  let acumuladoAngulo = 0;
 
   return (
     <main className={`w-full max-w-md mx-auto p-4 min-h-screen pb-20 transition-colors duration-200 box-border ${
@@ -519,6 +535,84 @@ export default function FinanzasApp() {
         </div>
       </div>
 
+      {/* Gráfico de Torta en Historial */}
+      {tab === 'historial' && (
+        <div className={`${cardBg} p-4 rounded-2xl shadow-sm mb-6 border w-full box-border`}>
+          <div className="flex items-center gap-2 mb-4">
+            <PieIcon size={18} className="text-slate-400" />
+            <h2 className="font-bold text-sm">
+              Gráfico de Gastos ({mesesNombres[mesFiltro - 1]} {anioFiltro})
+            </h2>
+          </div>
+
+          {entradasGastos.length === 0 ? (
+            <p className="text-center text-xs text-slate-400 py-6">No hay gastos para mostrar el gráfico en este período</p>
+          ) : (
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <div className="relative w-36 h-36 flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
+                  {entradasGastos.map(([cat, val], index) => {
+                    const totalBase = (gastosARS + gastosUSD) || 1;
+                    const valorCat = val.totalARS + val.totalUSD;
+                    const porcentaje = (valorCat / totalBase) * 100;
+                    const strokeDasharray = `${porcentaje} ${100 - porcentaje}`;
+                    const strokeDashoffset = -acumuladoAngulo;
+                    acumuladoAngulo += porcentaje;
+                    const color = COLORES_GRAFICO[index % COLORES_GRAFICO.length];
+
+                    return (
+                      <circle
+                        key={cat}
+                        cx="18"
+                        cy="18"
+                        r="15.91549430918954"
+                        fill="transparent"
+                        stroke={color}
+                        strokeWidth="3.8"
+                        strokeDasharray={strokeDasharray}
+                        strokeDashoffset={strokeDashoffset}
+                      />
+                    );
+                  })}
+                </svg>
+                <div className="absolute text-center">
+                  <p className="text-[10px] text-slate-400 font-bold">GASTOS</p>
+                  <p className={`text-[11px] font-bold ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
+                    {formatearMonedaDirecta(gastosARS, 'ARS')}
+                  </p>
+                  {gastosUSD > 0 && (
+                    <p className="text-[10px] font-bold text-slate-400">
+                      {formatearMonedaDirecta(gastosUSD, 'USD')}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex-1 space-y-1.5 w-full">
+                {entradasGastos.map(([cat, val], index) => {
+                  const catObj = categorias.find(c => c.nombre === cat);
+                  const color = COLORES_GRAFICO[index % COLORES_GRAFICO.length];
+
+                  return (
+                    <div key={cat} className="flex justify-between items-center text-xs">
+                      <span className="flex items-center gap-1.5 font-semibold">
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                        <RenderIcono nombre={catObj?.icono || 'Tag'} size={14} /> {cat}
+                      </span>
+                      <span className="font-bold text-slate-400">
+                        {val.totalARS > 0 && formatearMonedaDirecta(val.totalARS, 'ARS')}
+                        {val.totalARS > 0 && val.totalUSD > 0 && ' + '}
+                        {val.totalUSD > 0 && formatearMonedaDirecta(val.totalUSD, 'USD')}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Formulario en Mes Actual */}
       {tab === 'actual' && (
         <form onSubmit={handleSubmit} className={`${cardBg} p-4 rounded-2xl shadow-sm space-y-3 mb-6 border w-full box-border`}>
@@ -552,7 +646,6 @@ export default function FinanzasApp() {
             </button>
           </div>
 
-          {/* Monto + Moneda */}
           <div className="flex gap-2">
             <input 
               type="text" 
@@ -639,7 +732,6 @@ export default function FinanzasApp() {
                   </div>
                   <div>
                     <p className="font-bold text-sm">{r.categoria} {r.descripcion ? `• ${r.descripcion}` : ''}</p>
-                    {/* Fecha Ubicada Debajo del Movimiento y Debajo el Modo de Pago */}
                     <p className="text-xs text-slate-400 mt-0.5">
                       📅 {r.fecha}
                     </p>
