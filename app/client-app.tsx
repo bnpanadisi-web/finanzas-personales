@@ -6,13 +6,13 @@ import {
   ShoppingCart, Home as HouseIcon, Zap, Utensils, Car, HeartPulse, Film, Tag, Wallet,
   Briefcase, TrendingUp, DollarSign, Dumbbell, Pizza, Coffee, Truck, Bike, Plane,
   GraduationCap, Gift, Smartphone, X, Edit2, Trash2, History, LayoutDashboard,
-  Eye, EyeOff, DollarSign as CoinIcon, Sun, Moon
+  Eye, EyeOff, DollarSign as CoinIcon, Sun, Moon, Download, Printer, Tv, BookOpen
 } from 'lucide-react';
 
 const ICONOS_DISPONIBLES: Record<string, any> = {
   Dumbbell, Pizza, Coffee, Truck, Bike, Utensils, ShoppingCart, HouseIcon, 
   Zap, Car, HeartPulse, Film, Plane, GraduationCap, Gift, Smartphone, Tag, 
-  Wallet, Briefcase, TrendingUp, DollarSign
+  Wallet, Briefcase, TrendingUp, DollarSign, Printer, Tv, BookOpen
 };
 
 const COLORES_GRAFICO = [
@@ -28,9 +28,10 @@ interface Categoria {
 }
 
 interface Registro {
-  id: number;
+  id: number | string;
   tipo: 'ingreso' | 'gasto';
   monto: number;
+  moneda?: 'ARS' | 'USD';
   categoria: string;
   cuenta: string;
   descripcion: string;
@@ -42,11 +43,13 @@ export default function FinanzasApp() {
   const [autenticado, setAutenticado] = useState(false);
   const [errorPin, setErrorPin] = useState(false);
 
-  // Modo Oscuro, Privacidad y Moneda
+  // Estados Globales
   const [darkMode, setDarkMode] = useState(false);
   const [ocultarMontos, setOcultarMontos] = useState(false);
-  const [moneda, setMoneda] = useState<'ARS' | 'USD'>('ARS');
-  const [cotizacionDolar, setCotizacionDolar] = useState<number>(1000);
+  
+  // Modo Viaje
+  const [modoViaje, setModoViaje] = useState(false);
+  const [registrosViaje, setRegistrosViaje] = useState<Registro[]>([]);
 
   // Navegación
   const [tab, setTab] = useState<'actual' | 'historial'>('actual');
@@ -63,6 +66,7 @@ export default function FinanzasApp() {
   // Formulario Movimiento
   const [tipo, setTipo] = useState<'gasto' | 'ingreso'>('gasto');
   const [montoInput, setMontoInput] = useState('');
+  const [monedaGasto, setMonedaGasto] = useState<'ARS' | 'USD'>('ARS');
   const [categoria, setCategoria] = useState('');
   const [cuenta, setCuenta] = useState('Mercado Pago');
   const [descripcion, setDescripcion] = useState('');
@@ -86,14 +90,17 @@ export default function FinanzasApp() {
       if (priv === 'true') setOcultarMontos(true);
       const darkPref = localStorage.getItem('finanzas_dark');
       if (darkPref === 'true') setDarkMode(true);
+      
+      const viajeStorage = localStorage.getItem('finanzas_registros_viaje');
+      if (viajeStorage) setRegistrosViaje(JSON.parse(viajeStorage));
     }
   }, []);
 
   useEffect(() => {
-    if (autenticado) {
+    if (autenticado && !modoViaje) {
       cargarDatos();
     }
-  }, [autenticado, tipo]);
+  }, [autenticado, tipo, modoViaje]);
 
   async function cargarDatos() {
     const { data: catData } = await supabase.from('categorias').select('*');
@@ -115,28 +122,13 @@ export default function FinanzasApp() {
     }
   }
 
-  function toggleMoneda() {
-    if (moneda === 'ARS') {
-      const valorDolar = prompt('Ingrese el valor de cotización del dólar (ARS):', cotizacionDolar.toString());
-      if (valorDolar && !isNaN(parseFloat(valorDolar)) && parseFloat(valorDolar) > 0) {
-        setCotizacionDolar(parseFloat(valorDolar));
-        setMoneda('USD');
-      }
-    } else {
-      setMoneda('ARS');
-    }
-  }
-
-  function formatearMoneda(valor: number): string {
+  function formatearMonedaDirecta(valor: number, moneda: 'ARS' | 'USD' = 'ARS'): string {
     if (ocultarMontos) return '••••••';
-
-    const valorConvertido = moneda === 'USD' ? valor / cotizacionDolar : valor;
     const simbolo = moneda === 'USD' ? 'US$ ' : '$ ';
-
     return simbolo + new Intl.NumberFormat('es-AR', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(valorConvertido);
+    }).format(valor);
   }
 
   function handleMontoChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -185,43 +177,77 @@ export default function FinanzasApp() {
     const montoLimpio = parseFloat(montoInput.replace(/\./g, '').replace(',', '.'));
     if (isNaN(montoLimpio)) return;
 
-    if (editandoRegistro) {
-      await supabase.from('registros').update({
-        tipo,
-        monto: montoLimpio,
-        categoria,
-        cuenta,
-        descripcion,
-        fecha
-      }).eq('id', editandoRegistro.id);
-      setEditandoRegistro(null);
+    if (modoViaje) {
+      if (editandoRegistro) {
+        const actualizados = registrosViaje.map(r => 
+          r.id === editandoRegistro.id ? { ...r, tipo, monto: montoLimpio, moneda: monedaGasto, categoria, cuenta, descripcion, fecha } : r
+        );
+        setRegistrosViaje(actualizados);
+        localStorage.setItem('finanzas_registros_viaje', JSON.stringify(actualizados));
+        setEditandoRegistro(null);
+      } else {
+        const nuevo: Registro = {
+          id: Date.now(),
+          tipo,
+          monto: montoLimpio,
+          moneda: monedaGasto,
+          categoria,
+          cuenta,
+          descripcion,
+          fecha
+        };
+        const lista = [nuevo, ...registrosViaje];
+        setRegistrosViaje(lista);
+        localStorage.setItem('finanzas_registros_viaje', JSON.stringify(lista));
+      }
     } else {
-      await supabase.from('registros').insert([{
-        tipo,
-        monto: montoLimpio,
-        categoria,
-        cuenta,
-        descripcion,
-        fecha
-      }]);
+      if (editandoRegistro) {
+        await supabase.from('registros').update({
+          tipo,
+          monto: montoLimpio,
+          moneda: monedaGasto,
+          categoria,
+          cuenta,
+          descripcion,
+          fecha
+        }).eq('id', editandoRegistro.id);
+        setEditandoRegistro(null);
+      } else {
+        await supabase.from('registros').insert([{
+          tipo,
+          monto: montoLimpio,
+          moneda: monedaGasto,
+          categoria,
+          cuenta,
+          descripcion,
+          fecha
+        }]);
+      }
+      cargarDatos();
     }
 
     setMontoInput('');
     setDescripcion('');
     setFecha(fechaHoy.toISOString().split('T')[0]);
-    cargarDatos();
   }
 
-  async function eliminarRegistro(id: number) {
+  async function eliminarRegistro(id: number | string) {
     if (!confirm('¿Seguro que deseas eliminar este registro?')) return;
-    await supabase.from('registros').delete().eq('id', id);
-    cargarDatos();
+    if (modoViaje) {
+      const filtrados = registrosViaje.filter(r => r.id !== id);
+      setRegistrosViaje(filtrados);
+      localStorage.setItem('finanzas_registros_viaje', JSON.stringify(filtrados));
+    } else {
+      await supabase.from('registros').delete().eq('id', id);
+      cargarDatos();
+    }
   }
 
   function iniciarEdicion(r: Registro) {
     setTab('actual');
     setEditandoRegistro(r);
     setTipo(r.tipo);
+    setMonedaGasto(r.moneda || 'ARS');
     const partes = r.monto.toFixed(2).split('.');
     const parteEnteraFormateada = new Intl.NumberFormat('es-AR').format(parseInt(partes[0], 10));
     setMontoInput(`${parteEnteraFormateada},${partes[1]}`);
@@ -264,7 +290,31 @@ export default function FinanzasApp() {
     }
   }
 
-  const registrosMostrados = registros.filter(r => {
+  function exportarAExcel() {
+    const datosAExportar = modoViaje ? registrosViaje : registros;
+    if (datosAExportar.length === 0) {
+      alert('No hay registros para exportar.');
+      return;
+    }
+
+    let csvContent = "data:text/csv;charset=utf-8,ID,Tipo,Monto,Moneda,Categoria,Cuenta,Fecha,Descripcion\n";
+    datosAExportar.forEach(r => {
+      const desc = r.descripcion ? `"${r.descripcion.replace(/"/g, '""')}"` : '""';
+      csvContent += `${r.id},${r.tipo},${r.monto},${r.moneda || 'ARS'},"${r.categoria}","${r.cuenta}",${r.fecha},${desc}\n`;
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `${modoViaje ? 'gastos_viaje' : 'mis_finanzas'}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  const listaActual = modoViaje ? registrosViaje : registros;
+
+  const registrosMostrados = listaActual.filter(r => {
     const f = new Date(r.fecha + 'T00:00:00');
     if (tab === 'actual') {
       return f.getMonth() === fechaHoy.getMonth() && f.getFullYear() === fechaHoy.getFullYear();
@@ -273,13 +323,22 @@ export default function FinanzasApp() {
     }
   });
 
-  const totalIngresos = registrosMostrados.filter(r => r.tipo === 'ingreso').reduce((acc, r) => acc + Number(r.monto), 0);
-  const totalGastos = registrosMostrados.filter(r => r.tipo === 'gasto').reduce((acc, r) => acc + Number(r.monto), 0);
+  // Totales separados por Moneda
+  const ingresosARS = registrosMostrados.filter(r => r.tipo === 'ingreso' && (r.moneda || 'ARS') === 'ARS').reduce((a, r) => a + Number(r.monto), 0);
+  const ingresosUSD = registrosMostrados.filter(r => r.tipo === 'ingreso' && r.moneda === 'USD').reduce((a, r) => a + Number(r.monto), 0);
+
+  const gastosARS = registrosMostrados.filter(r => r.tipo === 'gasto' && (r.moneda || 'ARS') === 'ARS').reduce((a, r) => a + Number(r.monto), 0);
+  const gastosUSD = registrosMostrados.filter(r => r.tipo === 'gasto' && r.moneda === 'USD').reduce((a, r) => a + Number(r.monto), 0);
 
   const gastosPorCategoria = registrosMostrados
     .filter(r => r.tipo === 'gasto')
-    .reduce((acc: Record<string, number>, r) => {
-      acc[r.categoria] = (acc[r.categoria] || 0) + Number(r.monto);
+    .reduce((acc: Record<string, { totalARS: number; totalUSD: number }>, r) => {
+      if (!acc[r.categoria]) acc[r.categoria] = { totalARS: 0, totalUSD: 0 };
+      if (r.moneda === 'USD') {
+        acc[r.categoria].totalUSD += Number(r.monto);
+      } else {
+        acc[r.categoria].totalARS += Number(r.monto);
+      }
       return acc;
     }, {});
 
@@ -323,9 +382,6 @@ export default function FinanzasApp() {
     return <Componente size={size} />;
   };
 
-  const entradasGastos = Object.entries(gastosPorCategoria);
-  let acumuladoAngulo = 0;
-
   const cardBg = darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100';
   const inputBg = darkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-800';
 
@@ -335,8 +391,33 @@ export default function FinanzasApp() {
     }`}>
       {/* Header */}
       <div className="flex justify-between items-center mb-4 w-full">
-        <h1 className="text-xl font-bold">Mis Finanzas</h1>
-        <div className="flex items-center gap-2">
+        <h1 className="text-xl font-bold">{modoViaje ? '✈️ Modo Viaje' : 'Mis Finanzas'}</h1>
+        <div className="flex items-center gap-1.5">
+          {/* Botón Modo Viaje */}
+          <button 
+            onClick={() => setModoViaje(!modoViaje)} 
+            title="Activar/Desactivar Modo Viaje"
+            className={`p-2 border rounded-xl shadow-sm transition-all active:scale-95 ${
+              modoViaje 
+                ? 'bg-sky-500 border-sky-400 text-white animate-pulse' 
+                : (darkMode ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-white border-slate-200 text-slate-600')
+            }`}
+          >
+            <Plane size={18} />
+          </button>
+
+          {/* Botón Excel */}
+          <button 
+            onClick={exportarAExcel} 
+            title="Exportar a Excel (CSV)"
+            className={`p-2 border rounded-xl shadow-sm transition-all active:scale-95 ${
+              darkMode ? 'bg-slate-900 border-slate-800 text-emerald-400' : 'bg-white border-slate-200 text-emerald-600'
+            }`}
+          >
+            <Download size={18} />
+          </button>
+
+          {/* Botón Modo Oscuro */}
           <button 
             onClick={toggleDarkMode} 
             className={`p-2 border rounded-xl shadow-sm transition-all active:scale-95 ${
@@ -345,14 +426,7 @@ export default function FinanzasApp() {
           >
             {darkMode ? <Sun size={18} /> : <Moon size={18} />}
           </button>
-          <button 
-            onClick={toggleMoneda} 
-            className={`px-2.5 py-1.5 border rounded-xl shadow-sm text-xs font-bold flex items-center gap-1 active:scale-95 transition-all ${
-              darkMode ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-white border-slate-200 text-slate-700'
-            }`}
-          >
-            <CoinIcon size={14} className="text-slate-500" /> {moneda}
-          </button>
+
           <button 
             onClick={() => {
               const nuevoEstado = !ocultarMontos;
@@ -367,6 +441,7 @@ export default function FinanzasApp() {
           >
             {ocultarMontos ? <EyeOff size={18} /> : <Eye size={18} />}
           </button>
+
           <button 
             onClick={cerrarSesion} 
             className={`p-2 border rounded-xl shadow-sm active:scale-95 transition-all ${
@@ -402,7 +477,7 @@ export default function FinanzasApp() {
         </button>
       </div>
 
-      {/* Filtro Historial (Se muestra Arriba de las Tarjetas) */}
+      {/* Filtro Historial */}
       {tab === 'historial' && (
         <div className={`${cardBg} p-3 rounded-2xl shadow-sm border mb-4 flex gap-2 w-full box-border`}>
           <select
@@ -426,96 +501,41 @@ export default function FinanzasApp() {
         </div>
       )}
 
-      {/* Tarjetas Resumen Únicas (Mismo Ancho 100% en Ambas Pestañas) */}
+      {/* Tarjetas Resumen en Monedas Directas */}
       <div className="grid grid-cols-3 gap-2 mb-4 text-center w-full box-border">
-        <div className={`${cardBg} p-3 rounded-2xl shadow-sm border`}>
-          <p className="text-xs text-slate-400 font-medium">Ingresos</p>
-          <p className="font-bold text-emerald-500 text-xs sm:text-sm">{formatearMoneda(totalIngresos)}</p>
-        </div>
-        <div className={`${cardBg} p-3 rounded-2xl shadow-sm border`}>
-          <p className="text-xs text-slate-400 font-medium">Gastos</p>
-          <p className="font-bold text-rose-500 text-xs sm:text-sm">{formatearMoneda(totalGastos)}</p>
-        </div>
-        <div className={`${cardBg} p-3 rounded-2xl shadow-sm border`}>
-          <p className="text-xs text-slate-400 font-medium">Balance</p>
-          <p className={`font-bold text-xs sm:text-sm ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>
-            {formatearMoneda(totalIngresos - totalGastos)}
-          </p>
-        </div>
-      </div>
-
-      {/* Gráfico de Torta en Historial */}
-      {tab === 'historial' && (
-        <div className={`${cardBg} p-4 rounded-2xl shadow-sm mb-6 border w-full box-border`}>
-          <div className="flex items-center gap-2 mb-4">
-            <PieIcon size={18} className="text-slate-400" />
-            <h2 className="font-bold text-sm">
-              Gráfico de Gastos ({mesesNombres[mesFiltro - 1]} {anioFiltro})
-            </h2>
-          </div>
-
-          {totalGastos === 0 ? (
-            <p className="text-center text-xs text-slate-400 py-6">No hay gastos para mostrar el gráfico en este período</p>
-          ) : (
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <div className="relative w-36 h-36 flex items-center justify-center flex-shrink-0">
-                <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
-                  {entradasGastos.map(([cat, monto], index) => {
-                    const porcentaje = (monto / totalGastos) * 100;
-                    const strokeDasharray = `${porcentaje} ${100 - porcentaje}`;
-                    const strokeDashoffset = -acumuladoAngulo;
-                    acumuladoAngulo += porcentaje;
-                    const color = COLORES_GRAFICO[index % COLORES_GRAFICO.length];
-
-                    return (
-                      <circle
-                        key={cat}
-                        cx="18"
-                        cy="18"
-                        r="15.91549430918954"
-                        fill="transparent"
-                        stroke={color}
-                        strokeWidth="3.8"
-                        strokeDasharray={strokeDasharray}
-                        strokeDashoffset={strokeDashoffset}
-                      />
-                    );
-                  })}
-                </svg>
-                <div className="absolute text-center">
-                  <p className="text-[10px] text-slate-400 font-bold">GASTOS</p>
-                  <p className={`text-[11px] font-bold ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{formatearMoneda(totalGastos)}</p>
-                </div>
-              </div>
-
-              <div className="flex-1 space-y-1.5 w-full">
-                {entradasGastos.map(([cat, monto], index) => {
-                  const porcentaje = Math.round((monto / totalGastos) * 100);
-                  const catObj = categorias.find(c => c.nombre === cat);
-                  const color = COLORES_GRAFICO[index % COLORES_GRAFICO.length];
-
-                  return (
-                    <div key={cat} className="flex justify-between items-center text-xs">
-                      <span className="flex items-center gap-1.5 font-semibold">
-                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                        <RenderIcono nombre={catObj?.icono || 'Tag'} size={14} /> {cat}
-                      </span>
-                      <span className="font-bold text-slate-400">{formatearMoneda(monto)} ({porcentaje}%)</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+        <div className={`${cardBg} p-3 rounded-2xl shadow-sm border flex flex-col justify-center`}>
+          <p className="text-[11px] text-slate-400 font-medium">Ingresos</p>
+          <p className="font-bold text-emerald-500 text-xs sm:text-sm">{formatearMonedaDirecta(ingresosARS, 'ARS')}</p>
+          {ingresosUSD > 0 && (
+            <p className="font-bold text-emerald-400 text-[10px] sm:text-xs">{formatearMonedaDirecta(ingresosUSD, 'USD')}</p>
           )}
         </div>
-      )}
+        <div className={`${cardBg} p-3 rounded-2xl shadow-sm border flex flex-col justify-center`}>
+          <p className="text-[11px] text-slate-400 font-medium">Gastos</p>
+          <p className="font-bold text-rose-500 text-xs sm:text-sm">{formatearMonedaDirecta(gastosARS, 'ARS')}</p>
+          {gastosUSD > 0 && (
+            <p className="font-bold text-rose-400 text-[10px] sm:text-xs">{formatearMonedaDirecta(gastosUSD, 'USD')}</p>
+          )}
+        </div>
+        <div className={`${cardBg} p-3 rounded-2xl shadow-sm border flex flex-col justify-center`}>
+          <p className="text-[11px] text-slate-400 font-medium">Balance</p>
+          <p className={`font-bold text-xs sm:text-sm ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>
+            {formatearMonedaDirecta(ingresosARS - gastosARS, 'ARS')}
+          </p>
+          {(ingresosUSD > 0 || gastosUSD > 0) && (
+            <p className={`font-bold text-[10px] sm:text-xs ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+              {formatearMonedaDirecta(ingresosUSD - gastosUSD, 'USD')}
+            </p>
+          )}
+        </div>
+      </div>
 
       {/* Formulario en Mes Actual */}
       {tab === 'actual' && (
         <form onSubmit={handleSubmit} className={`${cardBg} p-4 rounded-2xl shadow-sm space-y-3 mb-6 border w-full box-border`}>
           <div className="flex justify-between items-center mb-1">
             <span className="text-xs font-bold text-slate-400">
-              {editandoRegistro ? '✏️ EDITANDO REGISTRO' : '➕ NUEVO MOVIMIENTO'}
+              {editandoRegistro ? '✏️ EDITANDO REGISTRO' : (modoViaje ? '✈️ NUEVO GASTO DE VIAJE' : '➕ NUEVO MOVIMIENTO')}
             </span>
             {editandoRegistro && (
               <button
@@ -543,37 +563,60 @@ export default function FinanzasApp() {
             </button>
           </div>
 
-          <input 
-            type="text" 
-            placeholder="Monto ($)" 
-            value={montoInput} 
-            onChange={handleMontoChange}
-            className={`w-full p-3 border rounded-xl text-xl font-bold text-center outline-none focus:ring-2 ${
-              darkMode ? 'bg-slate-800 border-slate-700 text-white focus:ring-slate-600' : 'bg-white border-slate-200 focus:ring-slate-800'
-            }`} 
-            required 
-          />
+          {/* Campo de Monto + Selector de Moneda Directa */}
+          <div className="flex gap-2">
+            <input 
+              type="text" 
+              placeholder="Monto" 
+              value={montoInput} 
+              onChange={handleMontoChange}
+              className={`flex-1 p-3 border rounded-xl text-xl font-bold text-center outline-none focus:ring-2 ${
+                darkMode ? 'bg-slate-800 border-slate-700 text-white focus:ring-slate-600' : 'bg-white border-slate-200 focus:ring-slate-800'
+              }`} 
+              required 
+            />
+            <button
+              type="button"
+              onClick={() => setMonedaGasto(monedaGasto === 'ARS' ? 'USD' : 'ARS')}
+              className={`px-4 border rounded-xl font-bold text-sm transition-all active:scale-95 ${
+                monedaGasto === 'USD' 
+                  ? 'bg-emerald-600 border-emerald-500 text-white' 
+                  : (darkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700')
+              }`}
+            >
+              {monedaGasto}
+            </button>
+          </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div className="flex gap-1">
-              <select value={categoria} onChange={e => setCategoria(e.target.value)} className={`p-2 border rounded-xl w-full text-sm font-semibold outline-none ${inputBg}`}>
+              <select value={categoria} onChange={e => setCategoria(e.target.value)} className={`p-2.5 border rounded-xl w-full text-sm font-semibold outline-none ${inputBg}`}>
                 {categorias.filter(c => c.tipo === tipo).map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
               </select>
               <button type="button" onClick={() => setMostrarModalCat(true)} className={`p-2 border rounded-xl ${darkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}>
                 <Plus size={18} />
               </button>
             </div>
-            <select value={cuenta} onChange={e => setCuenta(e.target.value)} className={`p-2 border rounded-xl text-sm font-semibold outline-none ${inputBg}`}>
+            <select value={cuenta} onChange={e => setCuenta(e.target.value)} className={`p-2.5 border rounded-xl text-sm font-semibold outline-none ${inputBg}`}>
               {cuentas.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <input type="text" placeholder="Descripción opcional" value={descripcion} onChange={e => setDescripcion(e.target.value)}
-              className={`p-2.5 border rounded-xl text-sm outline-none ${inputBg}`} />
-            <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
-              className={`p-2.5 border rounded-xl text-sm outline-none ${inputBg}`} required />
-          </div>
+          <input 
+            type="text" 
+            placeholder="Descripción opcional" 
+            value={descripcion} 
+            onChange={e => setDescripcion(e.target.value)}
+            className={`w-full p-2.5 border rounded-xl text-sm outline-none ${inputBg}`} 
+          />
+
+          <input 
+            type="date" 
+            value={fecha} 
+            onChange={e => setFecha(e.target.value)}
+            className={`w-full p-2.5 border rounded-xl text-sm outline-none ${inputBg}`} 
+            required 
+          />
 
           <button type="submit" className={`w-full py-3 rounded-xl font-bold transition-all active:scale-95 ${
             darkMode ? 'bg-slate-100 text-slate-900 hover:bg-white' : 'bg-slate-900 text-white hover:bg-slate-800'
@@ -594,10 +637,11 @@ export default function FinanzasApp() {
         ) : (
           registrosMostrados.map(r => {
             const catObj = categorias.find(c => c.nombre === r.categoria);
+            const monedaItem = r.moneda || 'ARS';
             return (
               <div key={r.id} className={`${cardBg} p-3 rounded-xl shadow-sm flex justify-between items-center border w-full box-border`}>
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-xl ${
+                  <div className={`p-2.5 rounded-xl ${
                     r.tipo === 'ingreso' 
                       ? (darkMode ? 'bg-emerald-950/60 text-emerald-400' : 'bg-emerald-50 text-emerald-600') 
                       : (darkMode ? 'bg-rose-950/60 text-rose-400' : 'bg-rose-50 text-rose-600')
@@ -606,13 +650,15 @@ export default function FinanzasApp() {
                   </div>
                   <div>
                     <p className="font-bold text-sm">{r.categoria}</p>
-                    <p className="text-xs text-slate-400">{r.descripcion || r.cuenta} • <span className="italic">{r.fecha}</span></p>
+                    <p className="text-xs text-slate-400">
+                      📅 {r.fecha} • <span className="italic">{r.descripcion || r.cuenta}</span>
+                    </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3">
                   <span className={`font-bold text-sm ${r.tipo === 'ingreso' ? 'text-emerald-500' : 'text-rose-500'}`}>
-                    {r.tipo === 'ingreso' ? '+' : '-'}{formatearMoneda(Number(r.monto))}
+                    {r.tipo === 'ingreso' ? '+' : '-'}{formatearMonedaDirecta(Number(r.monto), monedaItem)}
                   </span>
                   <div className="flex gap-1">
                     <button onClick={() => iniciarEdicion(r)} className="p-1 text-slate-400 hover:text-slate-200">
