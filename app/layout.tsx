@@ -17,8 +17,11 @@ export const metadata: Metadata = {
   description: "Registro de ingresos, gastos, presupuestos y control bimonetario.",
   manifest: "/manifest.json",
   icons: {
-    icon: "/icon.png",
-    shortcut: "/icon.png",
+    icon: [
+      { url: "/favicon.png", type: "image/png" },
+      { url: "/icon.png", type: "image/png" },
+    ],
+    shortcut: "/favicon.png",
     apple: "/icon.png",
   },
   appleWebApp: {

@@ -108,7 +108,7 @@ export function ChangePinModal({
               type="password"
               inputMode="numeric"
               maxLength={6}
-              placeholder="Ingresa tu PIN actual (ej. 2706)"
+              placeholder="Ingresa tu PIN actual"
               value={pinActual}
               onChange={e => setPinActual(e.target.value.replace(/\D/g, ''))}
               required
