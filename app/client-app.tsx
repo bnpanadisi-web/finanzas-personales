@@ -15,6 +15,8 @@ import { SearchAndFilterBar } from '@/components/transactions/SearchAndFilterBar
 import { BudgetsView } from '@/components/budgets/BudgetsView';
 import { CategoryModal } from '@/components/categories/CategoryModal';
 import { ExportModal } from '@/components/export/ExportModal';
+import { ChangePinModal } from '@/components/auth/ChangePinModal';
+import { isSessionAuthenticated, logoutUser } from '@/lib/security';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useCategories } from '@/hooks/useCategories';
 import { useRates } from '@/hooks/useRates';
@@ -25,10 +27,7 @@ function FinanzasAppContent() {
 
   // Estados de Autenticación y Preferencias
   const [autenticado, setAutenticado] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('finanzas_auth') === 'true';
-    }
-    return false;
+    return isSessionAuthenticated();
   });
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
@@ -58,6 +57,7 @@ function FinanzasAppContent() {
   // Modales & Edición
   const [mostrarModalCat, setMostrarModalCat] = useState(false);
   const [mostrarModalExportar, setMostrarModalExportar] = useState(false);
+  const [mostrarModalPin, setMostrarModalPin] = useState(false);
   const [editandoRegistro, setEditandoRegistro] = useState<Transaction | null>(null);
   const [dialogoEliminar, setDialogoEliminar] = useState<{
     abierto: boolean;
@@ -94,6 +94,31 @@ function FinanzasAppContent() {
     }
   }, [darkMode]);
 
+  // Auto-bloqueo por inactividad (15 minutos)
+  useEffect(() => {
+    if (!autenticado || typeof window === 'undefined') return;
+
+    let timer: NodeJS.Timeout;
+    const LIMITE_INACTIVIDAD_MS = 15 * 60 * 1000; // 15 minutos
+
+    const reiniciarInactividad = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        logoutUser();
+        setAutenticado(false);
+      }, LIMITE_INACTIVIDAD_MS);
+    };
+
+    const eventos = ['mousedown', 'mousemove', 'keydown', 'touchstart', 'scroll'];
+    eventos.forEach(ev => window.addEventListener(ev, reiniciarInactividad));
+    reiniciarInactividad();
+
+    return () => {
+      clearTimeout(timer);
+      eventos.forEach(ev => window.removeEventListener(ev, reiniciarInactividad));
+    };
+  }, [autenticado]);
+
   const toggleDarkMode = () => {
     const nuevo = !darkMode;
     setDarkMode(nuevo);
@@ -116,9 +141,7 @@ function FinanzasAppContent() {
   };
 
   const handleLogout = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('finanzas_auth');
-    }
+    logoutUser();
     setAutenticado(false);
   };
 
@@ -284,6 +307,7 @@ function FinanzasAppContent() {
         toggleDarkMode={toggleDarkMode}
         ocultarMontos={ocultarMontos}
         toggleOcultarMontos={toggleOcultarMontos}
+        onOpenChangePin={() => setMostrarModalPin(true)}
         onLogout={handleLogout}
         rates={rates}
       />
@@ -458,6 +482,13 @@ function FinanzasAppContent() {
         isOpen={mostrarModalExportar}
         onClose={() => setMostrarModalExportar(false)}
         transacciones={todasLasTransacciones.length > 0 ? todasLasTransacciones : transacciones}
+        darkMode={darkMode}
+      />
+
+      {/* MODAL: CAMBIAR PIN DE SEGURIDAD */}
+      <ChangePinModal
+        isOpen={mostrarModalPin}
+        onClose={() => setMostrarModalPin(false)}
         darkMode={darkMode}
       />
 

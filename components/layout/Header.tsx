@@ -10,6 +10,7 @@ import {
   LogOut,
   UploadCloud,
   TrendingUp,
+  KeyRound,
 } from 'lucide-react';
 import { RatesData } from '@/types';
 
@@ -23,6 +24,7 @@ interface HeaderProps {
   toggleDarkMode: () => void;
   ocultarMontos: boolean;
   toggleOcultarMontos: () => void;
+  onOpenChangePin: () => void;
   onLogout: () => void;
   rates: RatesData;
 }
@@ -37,6 +39,7 @@ export function Header({
   toggleDarkMode,
   ocultarMontos,
   toggleOcultarMontos,
+  onOpenChangePin,
   onLogout,
   rates,
 }: HeaderProps) {
@@ -148,10 +151,20 @@ export function Header({
             {ocultarMontos ? <EyeOff size={17} /> : <Eye size={17} />}
           </button>
 
+          {/* Cambiar PIN */}
+          <button
+            onClick={onOpenChangePin}
+            title="Cambiar PIN de seguridad"
+            className={`p-2 sm:p-2.5 border rounded-xl shadow-sm active:scale-95 transition-all text-amber-500 hover:bg-amber-50 dark:hover:bg-slate-800 ${cardBg}`}
+            aria-label="Cambiar PIN"
+          >
+            <KeyRound size={17} />
+          </button>
+
           {/* Cerrar Sesión */}
           <button
             onClick={onLogout}
-            title="Cerrar sesión"
+            title="Bloquear / Cerrar sesión"
             className={`p-2 sm:p-2.5 border rounded-xl shadow-sm active:scale-95 transition-all hover:text-rose-500 ${cardBg}`}
             aria-label="Cerrar sesión"
           >

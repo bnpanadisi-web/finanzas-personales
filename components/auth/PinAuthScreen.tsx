@@ -1,6 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import { Delete, ShieldCheck, Sun, Moon } from 'lucide-react';
+import { getStoredPin, verifyPin, setSessionAuthenticated } from '@/lib/security';
 
 interface PinAuthScreenProps {
   darkMode: boolean;
@@ -15,8 +16,7 @@ export function PinAuthScreen({
 }: PinAuthScreenProps) {
   const [pin, setPin] = useState('');
   const [errorPin, setErrorPin] = useState(false);
-
-  const pinCorrecto = process.env.NEXT_PUBLIC_APP_PIN || '2706';
+  const [pinLength] = useState(() => (typeof window !== 'undefined' ? getStoredPin().length : 4));
 
   const handleKeyPress = (num: string) => {
     if (pin.length >= 6) return;
@@ -24,18 +24,14 @@ export function PinAuthScreen({
     setPin(nuevoPin);
     setErrorPin(false);
 
-    if (nuevoPin === pinCorrecto) {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('finanzas_auth', 'true');
-      }
+    if (verifyPin(nuevoPin)) {
+      setSessionAuthenticated(true);
       onSuccess();
-    } else if (nuevoPin.length >= 4 && nuevoPin !== pinCorrecto.slice(0, nuevoPin.length)) {
-      if (nuevoPin.length === pinCorrecto.length) {
-        setErrorPin(true);
-        setTimeout(() => {
-          setPin('');
-        }, 600);
-      }
+    } else if (nuevoPin.length >= pinLength) {
+      setErrorPin(true);
+      setTimeout(() => {
+        setPin('');
+      }, 600);
     }
   };
 
@@ -46,13 +42,14 @@ export function PinAuthScreen({
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pin === pinCorrecto) {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('finanzas_auth', 'true');
-      }
+    if (verifyPin(pin)) {
+      setSessionAuthenticated(true);
       onSuccess();
     } else {
       setErrorPin(true);
+      setTimeout(() => {
+        setPin('');
+      }, 600);
     }
   };
 
@@ -92,9 +89,9 @@ export function PinAuthScreen({
         <h1 className="text-xl font-bold tracking-tight">Finanzas Personales</h1>
         <p className="text-xs text-slate-400 mt-1 mb-5 font-medium">Ingresa tu PIN de seguridad</p>
 
-        {/* Indicador de dígitos */}
+        {/* Indicador de dígitos dinámico */}
         <div className="flex justify-center items-center gap-3 mb-6">
-          {[0, 1, 2, 3].map(index => (
+          {Array.from({ length: pinLength }).map((_, index) => (
             <div
               key={index}
               className={`w-3.5 h-3.5 rounded-full transition-all duration-200 ${
