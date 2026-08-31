@@ -1,10 +1,4 @@
-'use client';
-
-import dynamic from 'next/dynamic';
-
-const FinanzasApp = dynamic(() => import('./client-app'), {
-  ssr: false,
-});
+import FinanzasApp from './client-app';
 
 export default function Page() {
   return <FinanzasApp />;

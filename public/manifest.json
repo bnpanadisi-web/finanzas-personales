@@ -1,0 +1,22 @@
+{
+  "name": "Mis Finanzas Personales",
+  "short_name": "Finanzas",
+  "description": "Control de gastos, ingresos, presupuestos y cotizaciones bimonetarias.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090d16",
+  "theme_color": "#0f172a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}
