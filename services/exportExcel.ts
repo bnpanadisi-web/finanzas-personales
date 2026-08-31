@@ -1,4 +1,3 @@
-import ExcelJS from 'exceljs';
 import { Transaction } from '@/types';
 import { formatMonthYear } from '@/lib/formatters';
 
@@ -73,6 +72,8 @@ export async function generarExcelProfesional({
   presupuestos?: Record<string, number>;
   descripcionPeriodo: string;
 }): Promise<void> {
+  const ExcelJSModule = await import('exceljs');
+  const ExcelJS = (ExcelJSModule.default || ExcelJSModule) as typeof import('exceljs');
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Mis Finanzas Personales Web App';
   workbook.created = new Date();
