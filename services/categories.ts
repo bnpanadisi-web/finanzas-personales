@@ -58,3 +58,58 @@ export async function createCategory(
     return { data: null, error: errorMsg };
   }
 }
+
+export async function updateCategory(
+  id: number,
+  updates: { nombre: string; tipo: 'ingreso' | 'gasto'; icono: string },
+  anteriorNombre?: string
+): Promise<{ data: Category | null; error: string | null }> {
+  try {
+    const { data, error } = await supabase
+      .from('categorias')
+      .update({
+        nombre: updates.nombre.trim(),
+        tipo: updates.tipo,
+        icono: updates.icono,
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Si el nombre cambió, actualizamos también en cascada los registros históricos
+    if (anteriorNombre && anteriorNombre.trim() !== updates.nombre.trim()) {
+      try {
+        await supabase
+          .from('registros')
+          .update({ categoria: updates.nombre.trim() })
+          .eq('categoria', anteriorNombre.trim());
+      } catch (cascadeErr) {
+        console.warn('Advertencia actualizando registros vinculados:', cascadeErr);
+      }
+    }
+
+    return { data: data as Category, error: null };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Error al actualizar la categoría';
+    return { data: null, error: errorMsg };
+  }
+}
+
+export async function deleteCategory(
+  id: number
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const { error } = await supabase
+      .from('categorias')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return { success: true, error: null };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Error al eliminar la categoría';
+    return { success: false, error: errorMsg };
+  }
+}

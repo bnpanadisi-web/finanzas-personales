@@ -4,7 +4,6 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   ArrowRightLeft,
-  Plus,
   Repeat,
   CreditCard,
   Banknote,
@@ -307,9 +306,10 @@ export function TransactionForm({
             <button
               type="button"
               onClick={onOpenCategoryModal}
-              className="text-emerald-500 font-bold flex items-center gap-1 hover:underline"
+              className="text-emerald-500 font-bold flex items-center gap-1 hover:underline cursor-pointer"
+              title="Personalizar iconos, editar o crear categorías"
             >
-              <Plus size={13} /> Nueva categoría
+              <span>⚙️ Gestionar</span>
             </button>
           </div>
           <select

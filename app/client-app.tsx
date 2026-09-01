@@ -68,7 +68,7 @@ function FinanzasAppContent() {
 
   // Custom Hooks
   const { rates } = useRates();
-  const { categorias, agregarCategoria } = useCategories();
+  const { categorias, agregarCategoria, editarCategoria, eliminarCategoria } = useCategories();
   const savings = useSavings();
   const {
     transacciones,
@@ -493,11 +493,14 @@ function FinanzasAppContent() {
         </div>
       )}
 
-      {/* MODAL: NUEVA CATEGORÍA */}
+      {/* MODAL: GESTIONAR CATEGORÍAS */}
       <CategoryModal
         isOpen={mostrarModalCat}
         onClose={() => setMostrarModalCat(false)}
+        categorias={categorias}
         onCrearCategoria={agregarCategoria}
+        onEditarCategoria={editarCategoria}
+        onEliminarCategoria={eliminarCategoria}
         tipoPorDefecto="gasto"
         darkMode={darkMode}
       />
