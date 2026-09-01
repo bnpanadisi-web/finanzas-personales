@@ -13,12 +13,14 @@ import { TransactionForm } from '@/components/transactions/TransactionForm';
 import { TransactionList } from '@/components/transactions/TransactionList';
 import { SearchAndFilterBar } from '@/components/transactions/SearchAndFilterBar';
 import { BudgetsView } from '@/components/budgets/BudgetsView';
+import { SavingsView } from '@/components/savings/SavingsView';
 import { CategoryModal } from '@/components/categories/CategoryModal';
 import { ExportModal } from '@/components/export/ExportModal';
 import { ChangePinModal } from '@/components/auth/ChangePinModal';
 import { isSessionAuthenticated, logoutUser } from '@/lib/security';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useCategories } from '@/hooks/useCategories';
+import { useSavings } from '@/hooks/useSavings';
 import { useRates } from '@/hooks/useRates';
 import { getCurrentDateInfo, formatMonthYear } from '@/lib/formatters';
 
@@ -67,6 +69,7 @@ function FinanzasAppContent() {
   // Custom Hooks
   const { rates } = useRates();
   const { categorias, agregarCategoria } = useCategories();
+  const savings = useSavings();
   const {
     transacciones,
     todasLasTransacciones,
@@ -350,6 +353,8 @@ function FinanzasAppContent() {
                 return ok;
               }}
               onOpenCategoryModal={() => setMostrarModalCat(true)}
+              savingsGoals={savings.goals}
+              onDepositarEnReserva={savings.depositarEnMeta}
               darkMode={darkMode}
             />
           </div>
@@ -439,6 +444,26 @@ function FinanzasAppContent() {
           <BudgetsView
             categorias={categorias}
             transaccionesMesActual={transaccionesMesActual}
+            ocultarMontos={ocultarMontos}
+            darkMode={darkMode}
+          />
+        </div>
+      )}
+
+      {/* PESTAÑA: RESERVAS & METAS DE AHORRO */}
+      {tab === 'reservas' && (
+        <div className="animate-in fade-in duration-200">
+          <SavingsView
+            goals={savings.goals}
+            onCrearMeta={savings.crearMeta}
+            onEditarMeta={savings.editarMeta}
+            onEliminarMeta={savings.eliminarMeta}
+            onDepositar={savings.depositarEnMeta}
+            onRetirar={savings.retirarDeMeta}
+            totalAhorradoARS={savings.totalAhorradoARS}
+            totalObjetivoARS={savings.totalObjetivoARS}
+            totalAhorradoUSD={savings.totalAhorradoUSD}
+            totalObjetivoUSD={savings.totalObjetivoUSD}
             ocultarMontos={ocultarMontos}
             darkMode={darkMode}
           />

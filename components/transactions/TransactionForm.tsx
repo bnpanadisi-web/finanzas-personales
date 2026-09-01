@@ -9,7 +9,7 @@ import {
   CreditCard,
   Banknote,
 } from 'lucide-react';
-import { Category, Currency, Transaction, TransactionType } from '@/types';
+import { Category, Currency, SavingsGoal, Transaction, TransactionType } from '@/types';
 import { DEFAULT_ACCOUNTS } from '@/lib/constants';
 import {
   formatInputNumber,
@@ -26,6 +26,8 @@ interface TransactionFormProps {
   onCancelEdit: () => void;
   onSubmit: (t: Omit<Transaction, 'id'> | Transaction) => Promise<boolean>;
   onOpenCategoryModal: () => void;
+  savingsGoals?: SavingsGoal[];
+  onDepositarEnReserva?: (id: string, monto: number, nota?: string) => boolean;
   darkMode: boolean;
 }
 
@@ -36,6 +38,8 @@ export function TransactionForm({
   onCancelEdit,
   onSubmit,
   onOpenCategoryModal,
+  savingsGoals = [],
+  onDepositarEnReserva,
   darkMode,
 }: TransactionFormProps) {
   const { isoString } = getCurrentDateInfo();
@@ -63,7 +67,16 @@ export function TransactionForm({
   );
   const [cuotas, setCuotas] = useState<number>(() => editandoRegistro?.cuotas || 3);
   const [esRecurrente, setEsRecurrente] = useState(() => !!editandoRegistro?.esRecurrente);
+
+  // Destinar ingreso a Reserva / Ahorro
+  const [destinarAReserva, setDestinarAReserva] = useState(false);
+  const [reservaIdSeleccionada, setReservaIdSeleccionada] = useState<string>('');
+  const [montoReservadoInput, setMontoReservadoInput] = useState('');
+  const [montoReservadoManual, setMontoReservadoManual] = useState(false);
+
   const [enviando, setEnviando] = useState(false);
+
+  const effectiveReservaId = reservaIdSeleccionada || savingsGoals[0]?.id || '';
 
   const handleTipoChange = (nuevoTipo: TransactionType) => {
     setTipo(nuevoTipo);
@@ -75,11 +88,23 @@ export function TransactionForm({
     } else {
       setCategoria('Transferencia');
     }
+    if (nuevoTipo !== 'ingreso') {
+      setDestinarAReserva(false);
+    }
   };
 
   const handleMontoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formateado = formatInputNumber(e.target.value);
     setMontoInput(formateado);
+    // Si no ha sido editado manualmente, sugerir el monto total a la reserva
+    if (!montoReservadoManual) {
+      setMontoReservadoInput(formateado);
+    }
+  };
+
+  const handleMontoReservadoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setMontoReservadoManual(true);
+    setMontoReservadoInput(formatInputNumber(e.target.value));
   };
 
   const montoNum = parseCurrencyInput(montoInput);
@@ -97,6 +122,7 @@ export function TransactionForm({
     setEnviando(true);
 
     const cuotasFinal = tipo === 'gasto' && modoPago === 'cuotas' && cuotas > 1 ? cuotas : undefined;
+    const montoAReservar = destinarAReserva && effectiveReservaId ? parseCurrencyInput(montoReservadoInput) : undefined;
 
     const payload: Omit<Transaction, 'id'> | Transaction = editandoRegistro
       ? {
@@ -111,6 +137,8 @@ export function TransactionForm({
           fecha,
           cuotas: cuotasFinal,
           esRecurrente,
+          reservaId: destinarAReserva ? effectiveReservaId : undefined,
+          montoReservado: montoAReservar,
         }
       : {
           tipo,
@@ -123,9 +151,22 @@ export function TransactionForm({
           fecha,
           cuotas: cuotasFinal,
           esRecurrente,
+          reservaId: destinarAReserva ? effectiveReservaId : undefined,
+          montoReservado: montoAReservar,
         };
 
     const exito = await onSubmit(payload);
+
+    // Si se activó la reserva y se guardó con éxito, sumar a la meta
+    if (exito && tipo === 'ingreso' && destinarAReserva && effectiveReservaId && onDepositarEnReserva && montoAReservar && montoAReservar > 0) {
+      const metaTarget = savingsGoals.find(g => g.id === effectiveReservaId);
+      onDepositarEnReserva(
+        effectiveReservaId,
+        montoAReservar,
+        descripcion ? `Aporte desde ingreso: ${descripcion}` : `Aporte desde ingreso (${metaTarget?.nombre || 'Reserva'})`
+      );
+    }
+
     setEnviando(false);
 
     if (exito && !editandoRegistro) {
@@ -134,6 +175,9 @@ export function TransactionForm({
       setModoPago('contado');
       setCuotas(3);
       setEsRecurrente(false);
+      setDestinarAReserva(false);
+      setMontoReservadoInput('');
+      setMontoReservadoManual(false);
       setFecha(getCurrentDateInfo().isoString);
     }
   };
@@ -220,110 +264,127 @@ export function TransactionForm({
                 : 'bg-white border-slate-200 text-slate-900 focus:ring-slate-400 shadow-2xs'
             }`}
             required
-            autoComplete="off"
+            autoFocus
           />
         </div>
 
-        <button
-          type="button"
-          onClick={() => setMoneda(moneda === 'ARS' ? 'USD' : 'ARS')}
-          className={`px-4 border rounded-xl font-bold text-sm transition-all active:scale-95 shrink-0 ${
-            moneda === 'USD'
-              ? 'bg-emerald-600 border-emerald-500 text-white'
-              : darkMode
-              ? 'bg-slate-800 border-slate-700 text-slate-300'
-              : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
-          }`}
-        >
-          {moneda}
-        </button>
+        {/* Moneda (Pesos / Dólares) */}
+        <div className="flex rounded-xl p-1 bg-slate-100 dark:bg-slate-800/80 border border-slate-200/50 dark:border-slate-700/50 items-center">
+          <button
+            type="button"
+            onClick={() => setMoneda('ARS')}
+            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+              moneda === 'ARS'
+                ? darkMode
+                  ? 'bg-slate-700 text-white shadow-xs'
+                  : 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-400'
+            }`}
+          >
+            ARS
+          </button>
+          <button
+            type="button"
+            onClick={() => setMoneda('USD')}
+            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+              moneda === 'USD'
+                ? darkMode
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-emerald-500 text-white shadow-xs'
+                : 'text-slate-400'
+            }`}
+          >
+            USD
+          </button>
+        </div>
       </div>
 
-      {/* Categoría y Cuentas */}
-      {tipo !== 'transferencia' ? (
-        <div className="grid grid-cols-2 gap-2">
-          {/* Categoría */}
-          <div className="flex gap-1">
-            <select
-              value={categoria}
-              onChange={e => setCategoria(e.target.value)}
-              className={`p-2.5 border rounded-xl w-full text-xs font-bold outline-none ${inputBg}`}
-            >
-              {categorias
-                .filter(c => c.tipo === tipo)
-                .map(c => (
-                  <option key={c.id} value={c.nombre}>
-                    {c.nombre}
-                  </option>
-                ))}
-            </select>
+      {/* Selector de Categoría (No aplica si es Transferencia) */}
+      {tipo !== 'transferencia' && (
+        <div className="space-y-1">
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-slate-400 font-bold">Categoría:</span>
             <button
               type="button"
               onClick={onOpenCategoryModal}
-              title="Nueva categoría"
-              className={`p-2.5 border rounded-xl shrink-0 transition-all ${
-                darkMode
-                  ? 'bg-slate-800 border-slate-700 text-white hover:bg-slate-700'
-                  : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
-              }`}
+              className="text-emerald-500 font-bold flex items-center gap-1 hover:underline"
             >
-              <Plus size={16} />
+              <Plus size={13} /> Nueva categoría
             </button>
           </div>
-
-          {/* Cuenta */}
           <select
-            value={cuenta}
-            onChange={e => setCuenta(e.target.value)}
-            className={`p-2.5 border rounded-xl text-xs font-bold outline-none ${inputBg}`}
+            value={categoria}
+            onChange={e => setCategoria(e.target.value)}
+            className={`w-full p-2.5 border rounded-xl text-xs font-bold outline-none ${inputBg}`}
           >
-            {DEFAULT_ACCOUNTS.map(c => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
+            {categorias
+              .filter(c => c.tipo === tipo)
+              .map(c => (
+                <option key={c.id} value={c.nombre}>
+                  {c.icono} {c.nombre}
+                </option>
+              ))}
           </select>
         </div>
-      ) : (
-        /* Modo Transferencia: Cuenta Origen y Destino */
+      )}
+
+      {/* Cuentas: Origen y Destino */}
+      {tipo === 'transferencia' ? (
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="text-[10px] text-slate-400 font-bold block mb-1">Origen:</label>
+            <label className="text-[10px] text-slate-400 font-bold block mb-1">
+              Cuenta Origen:
+            </label>
             <select
               value={cuenta}
               onChange={e => setCuenta(e.target.value)}
-              className={`p-2.5 border rounded-xl w-full text-xs font-bold outline-none ${inputBg}`}
+              className={`w-full p-2.5 border rounded-xl text-xs font-bold outline-none ${inputBg}`}
             >
-              {DEFAULT_ACCOUNTS.map(c => (
-                <option key={c} value={c}>
-                  {c}
+              {DEFAULT_ACCOUNTS.map(cta => (
+                <option key={cta} value={cta}>
+                  {cta}
                 </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="text-[10px] text-slate-400 font-bold block mb-1">Destino:</label>
+            <label className="text-[10px] text-slate-400 font-bold block mb-1">
+              Cuenta Destino:
+            </label>
             <select
               value={cuentaDestino}
               onChange={e => setCuentaDestino(e.target.value)}
-              className={`p-2.5 border rounded-xl w-full text-xs font-bold outline-none ${inputBg}`}
+              className={`w-full p-2.5 border rounded-xl text-xs font-bold outline-none ${inputBg}`}
             >
-              {DEFAULT_ACCOUNTS.filter(c => c !== cuenta).map(c => (
-                <option key={c} value={c}>
-                  {c}
+              {DEFAULT_ACCOUNTS.map(cta => (
+                <option key={cta} value={cta} disabled={cta === cuenta}>
+                  {cta}
                 </option>
               ))}
             </select>
           </div>
+        </div>
+      ) : (
+        <div className="space-y-1">
+          <span className="text-slate-400 font-bold text-xs">Cuenta / Billetera:</span>
+          <select
+            value={cuenta}
+            onChange={e => setCuenta(e.target.value)}
+            className={`w-full p-2.5 border rounded-xl text-xs font-bold outline-none ${inputBg}`}
+          >
+            {DEFAULT_ACCOUNTS.map(cta => (
+              <option key={cta} value={cta}>
+                {cta}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 
       {/* Opciones de Pago para Gastos: Contado vs Cuotas vs Recurrente */}
       {tipo === 'gasto' && !editandoRegistro && (
         <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
-          {/* Selector Contado / Cuotas / Gasto Fijo */}
           <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/50 dark:border-slate-700/50">
-            {/* Opción Contado */}
             <button
               type="button"
               onClick={() => setModoPago('contado')}
@@ -339,15 +400,12 @@ export function TransactionForm({
               <span>Contado</span>
             </button>
 
-            {/* Opción Cuotas */}
             <button
               type="button"
               onClick={() => setModoPago('cuotas')}
               className={`py-1.5 px-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1 transition-all ${
                 modoPago === 'cuotas'
-                  ? darkMode
-                    ? 'bg-violet-600 text-white shadow-xs'
-                    : 'bg-violet-600 text-white shadow-xs'
+                  ? 'bg-violet-600 text-white shadow-xs'
                   : 'text-slate-500 dark:text-slate-400'
               }`}
             >
@@ -355,7 +413,6 @@ export function TransactionForm({
               <span>En Cuotas</span>
             </button>
 
-            {/* Toggle Gasto Fijo / Recurrente */}
             <button
               type="button"
               onClick={() => setEsRecurrente(!esRecurrente)}
@@ -372,7 +429,6 @@ export function TransactionForm({
             </button>
           </div>
 
-          {/* Sub-selector de Cuotas si el modo es Cuotas */}
           {modoPago === 'cuotas' && (
             <div className="p-2.5 rounded-xl border bg-violet-50/50 dark:bg-violet-950/20 border-violet-200 dark:border-violet-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 animate-in fade-in duration-150">
               <div className="flex items-center gap-2">
@@ -399,6 +455,72 @@ export function TransactionForm({
                   {cuotas} cuotas de {formatCurrency(valorCuotaEstimado, moneda)}
                 </span>
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Opción para Ingresos: Destinar parte o todo a una Reserva / Ahorro */}
+      {tipo === 'ingreso' && !editandoRegistro && savingsGoals.length > 0 && (
+        <div className="space-y-2.5 pt-1 border-t border-slate-100 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={() => setDestinarAReserva(!destinarAReserva)}
+            className={`w-full py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+              destinarAReserva
+                ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-500 text-amber-900 dark:text-amber-200'
+                : 'border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-base">🐷</span>
+              <span>Destinar a Reserva / Ahorro</span>
+            </div>
+            <span className={`text-[10px] px-2 py-0.5 rounded-md font-extrabold uppercase ${
+              destinarAReserva ? 'bg-amber-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+            }`}>
+              {destinarAReserva ? 'Activado' : 'Opcional'}
+            </span>
+          </button>
+
+          {destinarAReserva && (
+            <div className="p-3 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 space-y-2.5 animate-in fade-in duration-150">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-amber-800 dark:text-amber-300 font-bold block mb-1">
+                    Meta de Ahorro:
+                  </label>
+                  <select
+                    value={effectiveReservaId}
+                    onChange={e => setReservaIdSeleccionada(e.target.value)}
+                    className="w-full p-2 border rounded-xl text-xs font-bold outline-none bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700 text-slate-800 dark:text-white"
+                  >
+                    {savingsGoals.map(g => (
+                      <option key={g.id} value={g.id}>
+                        {g.icono || '🐷'} {g.nombre} ({g.moneda})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-amber-800 dark:text-amber-300 font-bold block mb-1">
+                    Importe a Reservar ({moneda}):
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Monto a reservar"
+                    value={montoReservadoInput}
+                    onChange={handleMontoReservadoChange}
+                    className="w-full p-2 border rounded-xl text-xs font-black outline-none bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700 text-slate-800 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">
+                💡 Puedes reservar el total o cambiar libremente el importe para apartar solo una parte de este ingreso.
+              </p>
             </div>
           )}
         </div>
