@@ -63,6 +63,51 @@ export const ICONOS_DISPONIBLES: Record<string, LucideIcon> = {
   RefreshCw,
 };
 
+export const ICONO_A_EMOJI: Record<string, string> = {
+  Wallet: '👛',
+  Briefcase: '💼',
+  TrendingUp: '📈',
+  DollarSign: '💵',
+  Landmark: '🏛️',
+  PiggyBank: '🐷',
+  CreditCard: '💳',
+  ArrowRightLeft: '🔁',
+  ShoppingCart: '🛒',
+  HouseIcon: '🏠',
+  Home: '🏠',
+  Utensils: '🍽️',
+  Pizza: '🍕',
+  Coffee: '☕',
+  Zap: '⚡',
+  Car: '🚗',
+  Bike: '🚲',
+  Truck: '🚚',
+  Plane: '✈️',
+  HeartPulse: '💊',
+  Dumbbell: '🏋️',
+  Film: '🎬',
+  Tv: '📺',
+  BookOpen: '📚',
+  GraduationCap: '🎓',
+  Gift: '🎁',
+  Smartphone: '📱',
+  Tag: '🏷️',
+  Printer: '🖨️',
+  RefreshCw: '🔄',
+};
+
+export function getCategoryEmoji(icono?: string): string {
+  if (!icono) return '🏷️';
+  if (ICONO_A_EMOJI[icono]) {
+    return ICONO_A_EMOJI[icono];
+  }
+  // Si ya es un emoji o contiene caracteres unicode/no alfanuméricos simples
+  if (/[\u{1F300}-\u{1FAFF}]/u.test(icono) || !/^[A-Za-z0-9_]+$/.test(icono)) {
+    return icono;
+  }
+  return '🏷️';
+}
+
 export const DEFAULT_ACCOUNTS = [
   'Mercado Pago',
   'Efectivo',

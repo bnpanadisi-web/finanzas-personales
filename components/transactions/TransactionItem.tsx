@@ -29,6 +29,12 @@ export function TransactionItem({
   onDelete,
   darkMode,
 }: TransactionItemProps) {
+  const isEmoji =
+    registro.tipo !== 'transferencia' &&
+    categoriaObj?.icono &&
+    !ICONOS_DISPONIBLES[categoriaObj.icono] &&
+    (/[\u{1F300}-\u{1FAFF}]/u.test(categoriaObj.icono) || !/^[A-Za-z0-9_]+$/.test(categoriaObj.icono));
+
   const IconComp =
     registro.tipo === 'transferencia'
       ? ArrowRightLeft
@@ -62,8 +68,12 @@ export function TransactionItem({
     >
       <div className="flex items-center gap-3 min-w-0 flex-1">
         {/* Icono */}
-        <div className={`p-2.5 rounded-xl shrink-0 ${iconBadgeBg}`}>
-          <IconComp size={18} />
+        <div className={`p-2.5 rounded-xl shrink-0 ${iconBadgeBg} flex items-center justify-center`}>
+          {isEmoji ? (
+            <span className="text-base leading-none">{categoriaObj?.icono}</span>
+          ) : (
+            <IconComp size={18} />
+          )}
         </div>
 
         {/* Info */}

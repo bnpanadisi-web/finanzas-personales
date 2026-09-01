@@ -4,6 +4,7 @@ import { Target, Plus, AlertCircle, Edit2, Trash2 } from 'lucide-react';
 import { Category, Transaction } from '@/types';
 import { useBudgets } from '@/hooks/useBudgets';
 import { formatCurrency, formatInputNumber, parseCurrencyInput } from '@/lib/formatters';
+import { getCategoryEmoji } from '@/lib/constants';
 
 interface BudgetsViewProps {
   categorias: Category[];
@@ -196,7 +197,7 @@ export function BudgetsView({
               >
                 {categoriasGasto.map(c => (
                   <option key={c.id} value={c.nombre}>
-                    {c.nombre}
+                    {getCategoryEmoji(c.icono)} {c.nombre}
                   </option>
                 ))}
               </select>

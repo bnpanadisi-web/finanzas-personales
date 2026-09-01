@@ -147,6 +147,10 @@ export function DonutExpenseChart({
             {categoriasOrdenadas.map(([cat, monto], index) => {
               const catObj = categorias.find(c => c.nombre === cat);
               const color = COLORES_GRAFICO[index % COLORES_GRAFICO.length];
+              const isEmoji =
+                catObj?.icono &&
+                !ICONOS_DISPONIBLES[catObj.icono] &&
+                (/[\u{1F300}-\u{1FAFF}]/u.test(catObj.icono) || !/^[A-Za-z0-9_]+$/.test(catObj.icono));
               const IconComp = (catObj?.icono && ICONOS_DISPONIBLES[catObj.icono]) || Tag;
               const porcentaje = ((monto / totalGastado) * 100).toFixed(1);
               const isSelected = categoriaHover === cat;
@@ -170,7 +174,11 @@ export function DonutExpenseChart({
                       className="w-2.5 h-2.5 rounded-full shrink-0"
                       style={{ backgroundColor: color }}
                     />
-                    <IconComp size={14} className="text-slate-400 shrink-0" />
+                    {isEmoji ? (
+                      <span className="text-xs leading-none shrink-0">{catObj?.icono}</span>
+                    ) : (
+                      <IconComp size={14} className="text-slate-400 shrink-0" />
+                    )}
                     <span className="truncate text-xs text-slate-800 dark:text-slate-200">
                       {cat}
                     </span>

@@ -10,7 +10,7 @@ import {
   Banknote,
 } from 'lucide-react';
 import { Category, Currency, SavingsGoal, Transaction, TransactionType } from '@/types';
-import { DEFAULT_ACCOUNTS } from '@/lib/constants';
+import { DEFAULT_ACCOUNTS, getCategoryEmoji } from '@/lib/constants';
 import {
   formatInputNumber,
   parseCurrencyInput,
@@ -321,7 +321,7 @@ export function TransactionForm({
               .filter(c => c.tipo === tipo)
               .map(c => (
                 <option key={c.id} value={c.nombre}>
-                  {c.icono} {c.nombre}
+                  {getCategoryEmoji(c.icono)} {c.nombre}
                 </option>
               ))}
           </select>
