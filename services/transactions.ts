@@ -1,6 +1,43 @@
 import { supabase } from '@/lib/supabase';
 import { Transaction } from '@/types';
 
+// Helper para empaquetar metadata en el campo descripcion sin alterar el schema de Supabase
+function formatRegistroDescripcion(
+  desc: string | undefined,
+  options?: {
+    cuentaDestino?: string;
+    cuotaText?: string;
+    esRecurrente?: boolean;
+  }
+): string {
+  const parts: string[] = [];
+  if (desc && desc.trim()) {
+    parts.push(desc.trim());
+  }
+  if (options?.cuotaText) {
+    parts.push(options.cuotaText);
+  }
+  if (options?.cuentaDestino) {
+    parts.push(`[Destino: ${options.cuentaDestino}]`);
+  }
+  if (options?.esRecurrente) {
+    parts.push('[Recurrente]');
+  }
+  return parts.join(' ').trim();
+}
+
+interface RawSupabaseRegistro {
+  id: number | string;
+  created_at?: string;
+  tipo: string;
+  monto: number;
+  categoria: string;
+  cuenta: string;
+  descripcion?: string | null;
+  fecha: string;
+  moneda?: string | null;
+}
+
 export async function getTransactions(): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from('registros')
@@ -12,7 +49,51 @@ export async function getTransactions(): Promise<Transaction[]> {
     return [];
   }
 
-  return (data || []) as Transaction[];
+  const rawList = (data || []) as RawSupabaseRegistro[];
+
+  return rawList.map(row => {
+    let cuentaDestino: string | undefined = undefined;
+    let cuotas: number | undefined = undefined;
+    let cuotaActual: number | undefined = undefined;
+    let esRecurrente = false;
+    let desc = (row.descripcion || '').trim();
+
+    // Extraer [Destino: NombreCuenta]
+    const matchDestino = desc.match(/\[Destino:\s*([^\]]+)\]/i);
+    if (matchDestino) {
+      cuentaDestino = matchDestino[1].trim();
+      desc = desc.replace(matchDestino[0], '').trim();
+    }
+
+    // Extraer (Cuota X/Y)
+    const matchCuota = desc.match(/\(Cuota\s*(\d+)\/(\d+)\)/i);
+    if (matchCuota) {
+      cuotaActual = parseInt(matchCuota[1], 10);
+      cuotas = parseInt(matchCuota[2], 10);
+    }
+
+    // Extraer [Recurrente]
+    if (desc.includes('[Recurrente]')) {
+      esRecurrente = true;
+      desc = desc.replace('[Recurrente]', '').trim();
+    }
+
+    return {
+      id: row.id,
+      tipo: row.tipo as Transaction['tipo'],
+      monto: Number(row.monto),
+      moneda: (row.moneda as Transaction['moneda']) || 'ARS',
+      categoria: row.categoria,
+      cuenta: row.cuenta,
+      cuentaDestino,
+      descripcion: desc,
+      fecha: row.fecha,
+      cuotas,
+      cuotaActual,
+      esRecurrente,
+      creadoEn: row.created_at,
+    };
+  });
 }
 
 export async function insertTransaction(
@@ -21,7 +102,7 @@ export async function insertTransaction(
   try {
     // Si tiene cuotas > 1, generamos los N registros distribuidos mes a mes
     if (t.cuotas && t.cuotas > 1 && t.tipo === 'gasto') {
-      const recordsToInsert: Omit<Transaction, 'id'>[] = [];
+      const recordsToInsert = [];
       const fechaBase = new Date(t.fecha + 'T00:00:00');
       const montoPorCuota = parseFloat((t.monto / t.cuotas).toFixed(2));
 
@@ -30,17 +111,19 @@ export async function insertTransaction(
         fechaCuota.setMonth(fechaBase.getMonth() + (i - 1));
         const fechaIso = fechaCuota.toISOString().split('T')[0];
 
+        const descFinal = formatRegistroDescripcion(t.descripcion, {
+          cuotaText: `(Cuota ${i}/${t.cuotas})`,
+          esRecurrente: t.esRecurrente,
+        });
+
         recordsToInsert.push({
           tipo: t.tipo,
           monto: montoPorCuota,
-          moneda: t.moneda,
+          moneda: t.moneda || 'ARS',
           categoria: t.categoria,
           cuenta: t.cuenta,
-          descripcion: `${t.descripcion ? t.descripcion + ' ' : ''}(Cuota ${i}/${t.cuotas})`,
+          descripcion: descFinal,
           fecha: fechaIso,
-          cuotas: t.cuotas,
-          cuotaActual: i,
-          esRecurrente: t.esRecurrente,
         });
       }
 
@@ -49,28 +132,32 @@ export async function insertTransaction(
       return { data: (data || []) as Transaction[], error: null };
     }
 
-    // Registro estándar o transferencia
+    // Registro estándar o transferencia (solo enviamos columnas existentes en Supabase)
+    const descFinal = formatRegistroDescripcion(t.descripcion, {
+      cuentaDestino: t.tipo === 'transferencia' ? t.cuentaDestino : undefined,
+      esRecurrente: t.esRecurrente,
+    });
+
+    const payload = {
+      tipo: t.tipo,
+      monto: t.monto,
+      moneda: t.moneda || 'ARS',
+      categoria: t.categoria,
+      cuenta: t.cuenta,
+      descripcion: descFinal,
+      fecha: t.fecha,
+    };
+
     const { data, error } = await supabase
       .from('registros')
-      .insert([
-        {
-          tipo: t.tipo,
-          monto: t.monto,
-          moneda: t.moneda,
-          categoria: t.categoria,
-          cuenta: t.cuenta,
-          cuentaDestino: t.cuentaDestino || null,
-          descripcion: t.descripcion || null,
-          fecha: t.fecha,
-          esRecurrente: !!t.esRecurrente,
-        },
-      ])
+      .insert([payload])
       .select();
 
     if (error) throw error;
     return { data: (data || []) as Transaction[], error: null };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : 'Error guardando registro';
+    console.error('Error insertando registro en Supabase:', err);
     return { data: null, error: errorMsg };
   }
 }
@@ -79,25 +166,32 @@ export async function updateTransaction(
   t: Transaction
 ): Promise<{ success: boolean; error: string | null }> {
   try {
+    const descFinal = formatRegistroDescripcion(t.descripcion, {
+      cuentaDestino: t.tipo === 'transferencia' ? t.cuentaDestino : undefined,
+      cuotaText: t.cuotas && t.cuotas > 1 ? `(Cuota ${t.cuotaActual || 1}/${t.cuotas})` : undefined,
+      esRecurrente: t.esRecurrente,
+    });
+
+    const payload = {
+      tipo: t.tipo,
+      monto: t.monto,
+      moneda: t.moneda || 'ARS',
+      categoria: t.categoria,
+      cuenta: t.cuenta,
+      descripcion: descFinal,
+      fecha: t.fecha,
+    };
+
     const { error } = await supabase
       .from('registros')
-      .update({
-        tipo: t.tipo,
-        monto: t.monto,
-        moneda: t.moneda,
-        categoria: t.categoria,
-        cuenta: t.cuenta,
-        cuentaDestino: t.cuentaDestino || null,
-        descripcion: t.descripcion || null,
-        fecha: t.fecha,
-        esRecurrente: !!t.esRecurrente,
-      })
+      .update(payload)
       .eq('id', t.id);
 
     if (error) throw error;
     return { success: true, error: null };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : 'Error actualizando registro';
+    console.error('Error actualizando registro en Supabase:', err);
     return { success: false, error: errorMsg };
   }
 }
