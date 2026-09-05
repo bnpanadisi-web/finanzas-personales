@@ -19,6 +19,7 @@ interface SearchAndFilterBarProps {
   setAnioFiltro?: (val: number) => void;
   mostrarFiltroFecha?: boolean;
   categorias: Category[];
+  cuentas?: string[];
   darkMode: boolean;
 }
 
@@ -36,6 +37,7 @@ export function SearchAndFilterBar({
   anioFiltro,
   setAnioFiltro,
   mostrarFiltroFecha = false,
+  cuentas = DEFAULT_ACCOUNTS,
   darkMode,
 }: SearchAndFilterBarProps) {
   const cardBg = darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-xs';
@@ -132,7 +134,7 @@ export function SearchAndFilterBar({
           className={`p-2 border rounded-xl text-[11px] font-bold outline-none ${inputBg}`}
         >
           <option value="todas">Todas las Cuentas</option>
-          {DEFAULT_ACCOUNTS.map(c => (
+          {cuentas.map(c => (
             <option key={c} value={c}>
               {c}
             </option>

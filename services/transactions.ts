@@ -1,7 +1,15 @@
 import { supabase } from '@/lib/supabase';
 import { Transaction } from '@/types';
+import {
+  isLocalOnlyMode,
+  getLocalTransactions,
+  insertLocalTransaction,
+  updateLocalTransaction,
+  deleteLocalTransaction,
+  saveLocalTransactions,
+} from '@/lib/localStorageEngine';
 
-// Helper para empaquetar metadata en el campo descripcion sin alterar el schema de Supabase
+// Helper para empaquetar metadata en el campo descripcion sin alterar el schema
 function formatRegistroDescripcion(
   desc: string | undefined,
   options?: {
@@ -39,68 +47,90 @@ interface RawSupabaseRegistro {
 }
 
 export async function getTransactions(): Promise<Transaction[]> {
-  const { data, error } = await supabase
-    .from('registros')
-    .select('*')
-    .order('fecha', { ascending: false });
-
-  if (error) {
-    console.error('Error cargando transacciones de Supabase:', error.message);
-    return [];
+  // Modo Local (Play Store / Offline)
+  if (isLocalOnlyMode()) {
+    return getLocalTransactions();
   }
 
-  const rawList = (data || []) as RawSupabaseRegistro[];
+  // Modo Supabase (Personal)
+  try {
+    const { data, error } = await supabase
+      .from('registros')
+      .select('*')
+      .order('fecha', { ascending: false });
 
-  return rawList.map(row => {
-    let cuentaDestino: string | undefined = undefined;
-    let cuotas: number | undefined = undefined;
-    let cuotaActual: number | undefined = undefined;
-    let esRecurrente = false;
-    let desc = (row.descripcion || '').trim();
-
-    // Extraer [Destino: NombreCuenta]
-    const matchDestino = desc.match(/\[Destino:\s*([^\]]+)\]/i);
-    if (matchDestino) {
-      cuentaDestino = matchDestino[1].trim();
-      desc = desc.replace(matchDestino[0], '').trim();
+    if (error) {
+      console.error('Error cargando transacciones de Supabase:', error.message);
+      return getLocalTransactions();
     }
 
-    // Extraer (Cuota X/Y)
-    const matchCuota = desc.match(/\(Cuota\s*(\d+)\/(\d+)\)/i);
-    if (matchCuota) {
-      cuotaActual = parseInt(matchCuota[1], 10);
-      cuotas = parseInt(matchCuota[2], 10);
-    }
+    const rawList = (data || []) as RawSupabaseRegistro[];
 
-    // Extraer [Recurrente]
-    if (desc.includes('[Recurrente]')) {
-      esRecurrente = true;
-      desc = desc.replace('[Recurrente]', '').trim();
-    }
+    return rawList.map(row => {
+      let cuentaDestino: string | undefined = undefined;
+      let cuotas: number | undefined = undefined;
+      let cuotaActual: number | undefined = undefined;
+      let esRecurrente = false;
+      let desc = (row.descripcion || '').trim();
 
-    return {
-      id: row.id,
-      tipo: row.tipo as Transaction['tipo'],
-      monto: Number(row.monto),
-      moneda: (row.moneda as Transaction['moneda']) || 'ARS',
-      categoria: row.categoria,
-      cuenta: row.cuenta,
-      cuentaDestino,
-      descripcion: desc,
-      fecha: row.fecha,
-      cuotas,
-      cuotaActual,
-      esRecurrente,
-      creadoEn: row.created_at,
-    };
-  });
+      // Extraer [Destino: NombreCuenta]
+      const matchDestino = desc.match(/\[Destino:\s*([^\]]+)\]/i);
+      if (matchDestino) {
+        cuentaDestino = matchDestino[1].trim();
+        desc = desc.replace(matchDestino[0], '').trim();
+      }
+
+      // Extraer (Cuota X/Y)
+      const matchCuota = desc.match(/\(Cuota\s*(\d+)\/(\d+)\)/i);
+      if (matchCuota) {
+        cuotaActual = parseInt(matchCuota[1], 10);
+        cuotas = parseInt(matchCuota[2], 10);
+      }
+
+      // Extraer [Recurrente]
+      if (desc.includes('[Recurrente]')) {
+        esRecurrente = true;
+        desc = desc.replace('[Recurrente]', '').trim();
+      }
+
+      return {
+        id: row.id,
+        tipo: row.tipo as Transaction['tipo'],
+        monto: Number(row.monto),
+        moneda: (row.moneda as Transaction['moneda']) || 'ARS',
+        categoria: row.categoria,
+        cuenta: row.cuenta,
+        cuentaDestino,
+        descripcion: desc,
+        fecha: row.fecha,
+        cuotas,
+        cuotaActual,
+        esRecurrente,
+        creadoEn: row.created_at,
+      };
+    });
+  } catch (e) {
+    console.error('Fallo Supabase, usando local:', e);
+    return getLocalTransactions();
+  }
 }
 
 export async function insertTransaction(
   t: Omit<Transaction, 'id'>
 ): Promise<{ data: Transaction[] | null; error: string | null }> {
+  // Modo Local (Play Store / Offline)
+  if (isLocalOnlyMode()) {
+    try {
+      const items = insertLocalTransaction(t);
+      return { data: items, error: null };
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Error guardando registro localmente';
+      return { data: null, error: errorMsg };
+    }
+  }
+
+  // Modo Supabase (Personal)
   try {
-    // Si tiene cuotas > 1, generamos los N registros distribuidos mes a mes
     if (t.cuotas && t.cuotas > 1 && t.tipo === 'gasto') {
       const recordsToInsert = [];
       const fechaBase = new Date(t.fecha + 'T00:00:00');
@@ -132,7 +162,6 @@ export async function insertTransaction(
       return { data: (data || []) as Transaction[], error: null };
     }
 
-    // Registro estándar o transferencia (solo enviamos columnas existentes en Supabase)
     const descFinal = formatRegistroDescripcion(t.descripcion, {
       cuentaDestino: t.tipo === 'transferencia' ? t.cuentaDestino : undefined,
       esRecurrente: t.esRecurrente,
@@ -165,6 +194,13 @@ export async function insertTransaction(
 export async function updateTransaction(
   t: Transaction
 ): Promise<{ success: boolean; error: string | null }> {
+  // Modo Local (Play Store / Offline)
+  if (isLocalOnlyMode()) {
+    const ok = updateLocalTransaction(t);
+    return { success: ok, error: null };
+  }
+
+  // Modo Supabase (Personal)
   try {
     const descFinal = formatRegistroDescripcion(t.descripcion, {
       cuentaDestino: t.tipo === 'transferencia' ? t.cuentaDestino : undefined,
@@ -199,6 +235,13 @@ export async function updateTransaction(
 export async function deleteTransaction(
   id: number | string
 ): Promise<{ success: boolean; error: string | null }> {
+  // Modo Local (Play Store / Offline)
+  if (isLocalOnlyMode()) {
+    const ok = deleteLocalTransaction(id);
+    return { success: ok, error: null };
+  }
+
+  // Modo Supabase (Personal)
   try {
     const { error } = await supabase.from('registros').delete().eq('id', id);
     if (error) throw error;
@@ -213,6 +256,14 @@ export async function importBatchTransactions(
   transactions: Transaction[]
 ): Promise<{ count: number; error: string | null }> {
   if (!transactions.length) return { count: 0, error: null };
+
+  if (isLocalOnlyMode()) {
+    const current = getLocalTransactions();
+    const updated = [...transactions, ...current];
+    saveLocalTransactions(updated);
+    return { count: transactions.length, error: null };
+  }
+
   try {
     const payload = transactions.map(t => ({
       tipo: t.tipo,
@@ -236,7 +287,7 @@ export async function importBatchTransactions(
 export function exportToCSV(transactions: Transaction[], filenamePrefix: string = 'mis_finanzas') {
   if (transactions.length === 0) return false;
 
-  let csvContent = 'data:text/csv;charset=utf-8,\uFEFF'; // BOM para compatibilidad con acentos en Excel
+  let csvContent = 'data:text/csv;charset=utf-8,\uFEFF';
   csvContent += 'ID,Tipo,Monto,Moneda,Categoria,Cuenta,Cuenta Destino,Fecha,Descripcion,Es Recurrente\n';
 
   transactions.forEach(r => {

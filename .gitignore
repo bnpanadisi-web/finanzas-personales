@@ -45,3 +45,12 @@ next-env.d.ts
 *.xlsx
 
 .vercel
+
+# Android / Capacitor
+android/.gradle/
+android/app/build/
+android/build/
+android/.idea/
+android/*.iml
+android/app/*.iml
+android/local.properties

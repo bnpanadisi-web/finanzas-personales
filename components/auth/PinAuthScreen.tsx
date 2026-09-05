@@ -1,7 +1,14 @@
 'use client';
 import React, { useState } from 'react';
-import { Delete, ShieldCheck, Sun, Moon } from 'lucide-react';
-import { getStoredPin, verifyPin, setSessionAuthenticated } from '@/lib/security';
+import { Delete, ShieldCheck, Sun, Moon, Lock } from 'lucide-react';
+import {
+  getStoredPin,
+  verifyPin,
+  setSessionAuthenticated,
+  isPinSetup,
+  saveCustomPin,
+  setPinDisabled,
+} from '@/lib/security';
 
 interface PinAuthScreenProps {
   darkMode: boolean;
@@ -14,9 +21,16 @@ export function PinAuthScreen({
   toggleDarkMode,
   onSuccess,
 }: PinAuthScreenProps) {
+  const yaConfigurado = typeof window !== 'undefined' ? isPinSetup() : true;
   const [pin, setPin] = useState('');
   const [errorPin, setErrorPin] = useState(false);
-  const [pinLength] = useState(() => (typeof window !== 'undefined' ? getStoredPin().length : 4));
+  const [pinLength] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const stored = getStoredPin();
+      return stored.length >= 4 ? stored.length : 4;
+    }
+    return 4;
+  });
 
   const handleKeyPress = (num: string) => {
     if (pin.length >= 6) return;
@@ -24,6 +38,17 @@ export function PinAuthScreen({
     setPin(nuevoPin);
     setErrorPin(false);
 
+    // Si es primera vez (configuración inicial de PIN)
+    if (!yaConfigurado) {
+      if (nuevoPin.length >= 4) {
+        saveCustomPin(nuevoPin);
+        setSessionAuthenticated(true);
+        onSuccess();
+      }
+      return;
+    }
+
+    // Si ya existe un PIN configurado
     if (verifyPin(nuevoPin)) {
       setSessionAuthenticated(true);
       onSuccess();
@@ -40,17 +65,9 @@ export function PinAuthScreen({
     setErrorPin(false);
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (verifyPin(pin)) {
-      setSessionAuthenticated(true);
-      onSuccess();
-    } else {
-      setErrorPin(true);
-      setTimeout(() => {
-        setPin('');
-      }, 600);
-    }
+  const handleOmitirPin = () => {
+    setPinDisabled(true);
+    onSuccess();
   };
 
   return (
@@ -87,11 +104,15 @@ export function PinAuthScreen({
         </div>
 
         <h1 className="text-xl font-bold tracking-tight">Finanzas Personales</h1>
-        <p className="text-xs text-slate-400 mt-1 mb-5 font-medium">Ingresa tu PIN de seguridad</p>
+        <p className="text-xs text-slate-400 mt-1 mb-5 font-medium">
+          {yaConfigurado
+            ? 'Ingresa tu PIN de seguridad'
+            : 'Crea un PIN de 4 dígitos para proteger tu app'}
+        </p>
 
         {/* Indicador de dígitos dinámico */}
         <div className="flex justify-center items-center gap-3 mb-6">
-          {Array.from({ length: pinLength }).map((_, index) => (
+          {Array.from({ length: yaConfigurado ? pinLength : 4 }).map((_, index) => (
             <div
               key={index}
               className={`w-3.5 h-3.5 rounded-full transition-all duration-200 ${
@@ -128,7 +149,11 @@ export function PinAuthScreen({
             </button>
           ))}
           <div className="flex items-center justify-center">
-            <ShieldCheck size={18} className="text-slate-400 opacity-60" />
+            {yaConfigurado ? (
+              <ShieldCheck size={18} className="text-slate-400 opacity-60" />
+            ) : (
+              <Lock size={18} className="text-emerald-500 opacity-80" />
+            )}
           </div>
           <button
             type="button"
@@ -155,16 +180,18 @@ export function PinAuthScreen({
           </button>
         </div>
 
-        {/* Formulario alternativo oculto para teclado físico */}
-        <form onSubmit={handleFormSubmit} className="mt-4">
-          <input
-            type="password"
-            value={pin}
-            onChange={e => setPin(e.target.value)}
-            className="opacity-0 w-0 h-0 absolute"
-            autoFocus
-          />
-        </form>
+        {/* Opción de omitir PIN en primer uso */}
+        {!yaConfigurado && (
+          <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={handleOmitirPin}
+              className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold underline cursor-pointer"
+            >
+              Ingresar directamente sin PIN
+            </button>
+          </div>
+        )}
       </div>
     </main>
   );

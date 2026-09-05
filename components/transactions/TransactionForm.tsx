@@ -25,6 +25,8 @@ interface TransactionFormProps {
   onCancelEdit: () => void;
   onSubmit: (t: Omit<Transaction, 'id'> | Transaction) => Promise<boolean>;
   onOpenCategoryModal: () => void;
+  cuentas?: string[];
+  onOpenAccountModal?: () => void;
   savingsGoals?: SavingsGoal[];
   onDepositarEnReserva?: (id: string, monto: number, nota?: string) => boolean;
   darkMode: boolean;
@@ -37,6 +39,8 @@ export function TransactionForm({
   onCancelEdit,
   onSubmit,
   onOpenCategoryModal,
+  cuentas = DEFAULT_ACCOUNTS,
+  onOpenAccountModal,
   savingsGoals = [],
   onDepositarEnReserva,
   darkMode,
@@ -53,9 +57,9 @@ export function TransactionForm({
     const disponibles = categorias.filter(c => c.tipo === 'gasto');
     return disponibles[0]?.nombre || 'Supermercado';
   });
-  const [cuenta, setCuenta] = useState(() => editandoRegistro?.cuenta || DEFAULT_ACCOUNTS[0]);
+  const [cuenta, setCuenta] = useState(() => editandoRegistro?.cuenta || cuentas[0] || 'Efectivo');
   const [cuentaDestino, setCuentaDestino] = useState(
-    () => editandoRegistro?.cuentaDestino || DEFAULT_ACCOUNTS[1]
+    () => editandoRegistro?.cuentaDestino || cuentas[1] || cuentas[0] || 'Cuenta Bancaria'
   );
   const [descripcion, setDescripcion] = useState(() => editandoRegistro?.descripcion || '');
   const [fecha, setFecha] = useState(() => editandoRegistro?.fecha || isoString);
@@ -330,49 +334,76 @@ export function TransactionForm({
 
       {/* Cuentas: Origen y Destino */}
       {tipo === 'transferencia' ? (
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="text-[10px] text-slate-400 font-bold block mb-1">
-              Cuenta Origen:
-            </label>
-            <select
-              value={cuenta}
-              onChange={e => setCuenta(e.target.value)}
-              className={`w-full p-2.5 border rounded-xl text-xs font-bold outline-none ${inputBg}`}
-            >
-              {DEFAULT_ACCOUNTS.map(cta => (
-                <option key={cta} value={cta}>
-                  {cta}
-                </option>
-              ))}
-            </select>
+        <div className="space-y-1">
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-slate-400 font-bold">Transferencia entre cuentas:</span>
+            {onOpenAccountModal && (
+              <button
+                type="button"
+                onClick={onOpenAccountModal}
+                className="text-sky-500 font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                title="Administrar cuentas y billeteras"
+              >
+                <span>⚙️ Cuentas</span>
+              </button>
+            )}
           </div>
-          <div>
-            <label className="text-[10px] text-slate-400 font-bold block mb-1">
-              Cuenta Destino:
-            </label>
-            <select
-              value={cuentaDestino}
-              onChange={e => setCuentaDestino(e.target.value)}
-              className={`w-full p-2.5 border rounded-xl text-xs font-bold outline-none ${inputBg}`}
-            >
-              {DEFAULT_ACCOUNTS.map(cta => (
-                <option key={cta} value={cta} disabled={cta === cuenta}>
-                  {cta}
-                </option>
-              ))}
-            </select>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] text-slate-400 font-bold block mb-1">
+                Origen:
+              </label>
+              <select
+                value={cuenta}
+                onChange={e => setCuenta(e.target.value)}
+                className={`w-full p-2.5 border rounded-xl text-xs font-bold outline-none ${inputBg}`}
+              >
+                {cuentas.map(cta => (
+                  <option key={cta} value={cta}>
+                    {cta}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-slate-400 font-bold block mb-1">
+                Destino:
+              </label>
+              <select
+                value={cuentaDestino}
+                onChange={e => setCuentaDestino(e.target.value)}
+                className={`w-full p-2.5 border rounded-xl text-xs font-bold outline-none ${inputBg}`}
+              >
+                {cuentas.map(cta => (
+                  <option key={cta} value={cta} disabled={cta === cuenta}>
+                    {cta}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       ) : (
         <div className="space-y-1">
-          <span className="text-slate-400 font-bold text-xs">Cuenta / Billetera:</span>
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-slate-400 font-bold">Cuenta / Billetera:</span>
+            {onOpenAccountModal && (
+              <button
+                type="button"
+                onClick={onOpenAccountModal}
+                className="text-sky-500 font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                title="Administrar cuentas y billeteras"
+              >
+                <span>⚙️ Cuentas</span>
+              </button>
+            )}
+          </div>
           <select
             value={cuenta}
             onChange={e => setCuenta(e.target.value)}
             className={`w-full p-2.5 border rounded-xl text-xs font-bold outline-none ${inputBg}`}
           >
-            {DEFAULT_ACCOUNTS.map(cta => (
+            {cuentas.map(cta => (
               <option key={cta} value={cta}>
                 {cta}
               </option>

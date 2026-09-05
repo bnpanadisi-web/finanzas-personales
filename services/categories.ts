@@ -1,5 +1,12 @@
 import { supabase } from '@/lib/supabase';
 import { Category } from '@/types';
+import {
+  isLocalOnlyMode,
+  getLocalCategories,
+  createLocalCategory,
+  updateLocalCategory,
+  deleteLocalCategory,
+} from '@/lib/localStorageEngine';
 
 export const CATEGORIAS_POR_DEFECTO: Category[] = [
   // Gastos
@@ -23,6 +30,10 @@ export const CATEGORIAS_POR_DEFECTO: Category[] = [
 ];
 
 export async function getCategories(): Promise<Category[]> {
+  if (isLocalOnlyMode()) {
+    return getLocalCategories();
+  }
+
   try {
     const { data, error } = await supabase
       .from('categorias')
@@ -35,8 +46,7 @@ export async function getCategories(): Promise<Category[]> {
     console.error('Error al cargar categorías de Supabase:', error);
   }
 
-  // Fallback
-  return CATEGORIAS_POR_DEFECTO;
+  return getLocalCategories();
 }
 
 export async function createCategory(
@@ -44,6 +54,16 @@ export async function createCategory(
   tipo: 'ingreso' | 'gasto',
   icono: string
 ): Promise<{ data: Category | null; error: string | null }> {
+  if (isLocalOnlyMode()) {
+    try {
+      const nueva = createLocalCategory(nombre, tipo, icono);
+      return { data: nueva, error: null };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error creando categoría';
+      return { data: null, error: msg };
+    }
+  }
+
   try {
     const { data, error } = await supabase
       .from('categorias')
@@ -64,6 +84,16 @@ export async function updateCategory(
   updates: { nombre: string; tipo: 'ingreso' | 'gasto'; icono: string },
   anteriorNombre?: string
 ): Promise<{ data: Category | null; error: string | null }> {
+  if (isLocalOnlyMode()) {
+    try {
+      const editada = updateLocalCategory(id, updates, anteriorNombre);
+      return { data: editada, error: null };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error editando categoría';
+      return { data: null, error: msg };
+    }
+  }
+
   try {
     const { data, error } = await supabase
       .from('categorias')
@@ -78,7 +108,6 @@ export async function updateCategory(
 
     if (error) throw error;
 
-    // Si el nombre cambió, actualizamos también en cascada los registros históricos
     if (anteriorNombre && anteriorNombre.trim() !== updates.nombre.trim()) {
       try {
         await supabase
@@ -100,6 +129,11 @@ export async function updateCategory(
 export async function deleteCategory(
   id: number
 ): Promise<{ success: boolean; error: string | null }> {
+  if (isLocalOnlyMode()) {
+    const ok = deleteLocalCategory(id);
+    return { success: ok, error: null };
+  }
+
   try {
     const { error } = await supabase
       .from('categorias')

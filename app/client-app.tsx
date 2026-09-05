@@ -15,11 +15,13 @@ import { SearchAndFilterBar } from '@/components/transactions/SearchAndFilterBar
 import { BudgetsView } from '@/components/budgets/BudgetsView';
 import { SavingsView } from '@/components/savings/SavingsView';
 import { CategoryModal } from '@/components/categories/CategoryModal';
+import { AccountModal } from '@/components/accounts/AccountModal';
 import { ExportModal } from '@/components/export/ExportModal';
 import { ChangePinModal } from '@/components/auth/ChangePinModal';
 import { isSessionAuthenticated, logoutUser } from '@/lib/security';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useCategories } from '@/hooks/useCategories';
+import { useAccounts } from '@/hooks/useAccounts';
 import { useSavings } from '@/hooks/useSavings';
 import { useRates } from '@/hooks/useRates';
 import { getCurrentDateInfo, formatMonthYear } from '@/lib/formatters';
@@ -58,6 +60,7 @@ function FinanzasAppContent() {
 
   // Modales & Edición
   const [mostrarModalCat, setMostrarModalCat] = useState(false);
+  const [mostrarModalCuentas, setMostrarModalCuentas] = useState(false);
   const [mostrarModalExportar, setMostrarModalExportar] = useState(false);
   const [mostrarModalPin, setMostrarModalPin] = useState(false);
   const [editandoRegistro, setEditandoRegistro] = useState<Transaction | null>(null);
@@ -69,6 +72,7 @@ function FinanzasAppContent() {
   // Custom Hooks
   const { rates } = useRates();
   const { categorias, agregarCategoria, editarCategoria, eliminarCategoria } = useCategories();
+  const { cuentas, agregarCuenta, editarCuenta, eliminarCuenta } = useAccounts();
   const savings = useSavings();
   const {
     transacciones,
@@ -353,6 +357,8 @@ function FinanzasAppContent() {
                 return ok;
               }}
               onOpenCategoryModal={() => setMostrarModalCat(true)}
+              cuentas={cuentas}
+              onOpenAccountModal={() => setMostrarModalCuentas(true)}
               savingsGoals={savings.goals}
               onDepositarEnReserva={savings.depositarEnMeta}
               darkMode={darkMode}
@@ -402,6 +408,7 @@ function FinanzasAppContent() {
               setAnioFiltro={setAnioFiltro}
               mostrarFiltroFecha={true}
               categorias={categorias}
+              cuentas={cuentas}
               darkMode={darkMode}
             />
 
@@ -502,6 +509,17 @@ function FinanzasAppContent() {
         onEditarCategoria={editarCategoria}
         onEliminarCategoria={eliminarCategoria}
         tipoPorDefecto="gasto"
+        darkMode={darkMode}
+      />
+
+      {/* MODAL: GESTIONAR CUENTAS Y BILLETERAS */}
+      <AccountModal
+        isOpen={mostrarModalCuentas}
+        onClose={() => setMostrarModalCuentas(false)}
+        cuentas={cuentas}
+        onAgregarCuenta={agregarCuenta}
+        onEditarCuenta={editarCuenta}
+        onEliminarCuenta={eliminarCuenta}
         darkMode={darkMode}
       />
 

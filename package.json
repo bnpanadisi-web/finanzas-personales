@@ -5,10 +5,16 @@
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
     "build": "next build",
+    "build:mobile": "node scripts/build-mobile.js",
+    "cap:sync": "npx cap sync android",
+    "cap:open": "npx cap open android",
     "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/cli": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
     "@supabase/supabase-js": "^2.112.2",
     "exceljs": "^4.4.0",
     "lucide-react": "^1.31.0",

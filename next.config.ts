@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 
+const isMobileExport =
+  process.env.BUILD_MOBILE === 'true' || process.env.CAPACITOR_BUILD === 'true';
+
 const nextConfig: NextConfig = {
+  ...(isMobileExport ? { output: 'export' } : {}),
+  images: {
+    unoptimized: true,
+  },
   allowedDevOrigins: [
     "192.168.0.39",
     "192.168.0.39:3000",

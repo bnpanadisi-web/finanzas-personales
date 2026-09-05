@@ -1,15 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 
-const DEFAULT_URL = 'https://pbijesdqbfniqulnbfen.supabase.co';
-const DEFAULT_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiaWplc2RxYmZuaXF1bG5iZmVuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYzOTY3ODksImV4cCI6MjEwMTk3Mjc4OX0.oOdCTCK2FX0xaL5bzhrbzbQ_LANyBypLsgWFtZ-LC-U';
+// Valores dummy seguros para modo local / offline
+const DUMMY_URL = 'https://local-finanzas-placeholder.supabase.co';
+const DUMMY_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24ifQ.placeholder-key';
 
 function getValidSupabaseUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   if (envUrl && (envUrl.startsWith('http://') || envUrl.startsWith('https://'))) {
     return envUrl;
   }
-  return DEFAULT_URL;
+  return DUMMY_URL;
 }
 
 function getValidSupabaseKey(): string {
@@ -17,7 +18,7 @@ function getValidSupabaseKey(): string {
   if (envKey && envKey.length > 20) {
     return envKey;
   }
-  return DEFAULT_KEY;
+  return DUMMY_KEY;
 }
 
 export const supabase = createClient(getValidSupabaseUrl(), getValidSupabaseKey());
