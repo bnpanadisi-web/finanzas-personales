@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { Category, Transaction } from '@/types';
 import { CATEGORIAS_POR_DEFECTO } from '@/services/categories';
 import { CUENTAS_INICIALES } from '@/hooks/useAccounts';
@@ -6,12 +7,22 @@ const KEY_REGISTROS = 'finanzas_local_registros';
 const KEY_CATEGORIAS = 'finanzas_local_categorias';
 const KEY_CUENTAS = 'finanzas_local_cuentas';
 
-// Determina si debemos usar modo local (por defecto para Play Store / Offline)
+// Determina si debemos usar modo local:
+// 1. En la app nativa instalada en el celular (Capacitor Android): 100% LOCAL y OFFLINE.
+// 2. En la versión web personal (Vercel / navegador): conecta a Supabase con tus datos reales (Julio, Agosto, Septiembre).
 export function isLocalOnlyMode(): boolean {
-  if (typeof window === 'undefined') return true;
-  // Si explícitamente se configuró Supabase y está activo en el entorno
-  const useSupabase = process.env.NEXT_PUBLIC_USE_SUPABASE === 'true';
-  return !useSupabase;
+  if (typeof window !== 'undefined') {
+    // Si corre como app nativa empaquetada en Android/iOS
+    if (Capacitor.isNativePlatform()) {
+      return true;
+    }
+  }
+  // Si explícitamente se construye con BUILD_MOBILE=true
+  if (process.env.BUILD_MOBILE === 'true') {
+    return true;
+  }
+  // En la web (Vercel / navegador de escritorio o móvil vía link): usa Supabase
+  return false;
 }
 
 // ----------------------------------------------------
@@ -153,7 +164,6 @@ export function updateLocalCategory(
   );
   saveLocalCategories(updated);
 
-  // Cascada en transacciones locales si cambió el nombre
   if (anteriorNombre && anteriorNombre.trim() !== updates.nombre.trim()) {
     const trans = getLocalTransactions();
     const transUpdated = trans.map(t =>

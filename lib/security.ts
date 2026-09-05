@@ -5,6 +5,7 @@
 const PIN_STORAGE_KEY = 'finanzas_custom_pin';
 const PIN_DISABLED_KEY = 'finanzas_pin_disabled';
 const AUTH_SESSION_KEY = 'finanzas_auth';
+const DEFAULT_PIN = '2706';
 
 export function isPinDisabled(): boolean {
   if (typeof window === 'undefined') return false;
@@ -22,27 +23,20 @@ export function setPinDisabled(disabled: boolean): void {
 }
 
 export function isPinSetup(): boolean {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined') return true;
   if (isPinDisabled()) return false;
-  const customPin = localStorage.getItem(PIN_STORAGE_KEY);
-  if (customPin && customPin.trim().length >= 4) {
-    return true;
-  }
-  if (process.env.NEXT_PUBLIC_APP_PIN && process.env.NEXT_PUBLIC_APP_PIN.trim().length >= 4) {
-    return true;
-  }
-  return false;
+  return true;
 }
 
 export function getStoredPin(): string {
   if (typeof window === 'undefined') {
-    return process.env.NEXT_PUBLIC_APP_PIN || '';
+    return process.env.NEXT_PUBLIC_APP_PIN || DEFAULT_PIN;
   }
   const customPin = localStorage.getItem(PIN_STORAGE_KEY);
   if (customPin && customPin.trim().length >= 4) {
     return customPin.trim();
   }
-  return process.env.NEXT_PUBLIC_APP_PIN || '';
+  return process.env.NEXT_PUBLIC_APP_PIN || DEFAULT_PIN;
 }
 
 export function verifyPin(inputPin: string): boolean {
