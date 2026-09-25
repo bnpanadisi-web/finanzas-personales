@@ -2,6 +2,7 @@
 import { useState, useCallback } from 'react';
 import { Budget, Transaction } from '@/types';
 import { useToast } from '@/components/ui/Toast';
+import { scheduleAutoBackup } from '@/services/googleBackup';
 
 const BUDGETS_STORAGE_KEY = 'finanzas_budgets_list';
 
@@ -44,6 +45,7 @@ export function useBudgets() {
         return actualizados;
       });
       success(`Presupuesto para "${categoria}" guardado`);
+      scheduleAutoBackup();
     },
     [success]
   );
@@ -58,6 +60,7 @@ export function useBudgets() {
         return actualizados;
       });
       success(`Presupuesto de "${categoria}" eliminado`);
+      scheduleAutoBackup();
     },
     [success]
   );

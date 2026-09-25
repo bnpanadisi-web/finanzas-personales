@@ -8,6 +8,7 @@ import {
   deleteCategory,
 } from '@/services/categories';
 import { useToast } from '@/components/ui/Toast';
+import { scheduleAutoBackup } from '@/services/googleBackup';
 
 export function useCategories() {
   const [categorias, setCategorias] = useState<Category[]>([]);
@@ -61,10 +62,12 @@ export function useCategories() {
     if (res.data) {
       setCategorias(prev => [...prev, res.data!]);
       success(`Categoría "${nombreLimpio}" creada con éxito`);
+      scheduleAutoBackup();
       return true;
     }
 
     await cargarCategorias();
+    scheduleAutoBackup();
     return true;
   };
 
@@ -94,10 +97,12 @@ export function useCategories() {
     if (res.data) {
       setCategorias(prev => prev.map(c => (c.id === id ? res.data! : c)));
       success(`Categoría "${nombreLimpio}" actualizada`);
+      scheduleAutoBackup();
       return true;
     }
 
     await cargarCategorias();
+    scheduleAutoBackup();
     return true;
   };
 
@@ -111,6 +116,7 @@ export function useCategories() {
 
     setCategorias(prev => prev.filter(c => c.id !== id));
     info(`Categoría "${target?.nombre || ''}" eliminada`);
+    scheduleAutoBackup();
     return true;
   };
 

@@ -11,8 +11,10 @@ import {
   UploadCloud,
   TrendingUp,
   KeyRound,
+  Cloud,
 } from 'lucide-react';
 import { RatesData } from '@/types';
+import { GoogleUserProfile } from '@/services/googleBackup';
 
 interface HeaderProps {
   modoViaje: boolean;
@@ -27,6 +29,8 @@ interface HeaderProps {
   onOpenChangePin: () => void;
   onLogout: () => void;
   rates: RatesData;
+  onOpenBackupModal: () => void;
+  googleUser: GoogleUserProfile | null;
 }
 
 export function Header({
@@ -42,6 +46,8 @@ export function Header({
   onOpenChangePin,
   onLogout,
   rates,
+  onOpenBackupModal,
+  googleUser,
 }: HeaderProps) {
   const [mostrarRates, setMostrarRates] = useState(false);
 
@@ -91,6 +97,34 @@ export function Header({
 
         {/* Acciones */}
         <div className="flex items-center gap-1.5 sm:gap-2 self-end sm:self-auto">
+          {/* Botón de Copia de Seguridad en Google Drive */}
+          <button
+            onClick={onOpenBackupModal}
+            title={
+              googleUser
+                ? `Copia de seguridad (Conectado como ${googleUser.name})`
+                : 'Copia de seguridad en Google Drive'
+            }
+            className={`p-2 sm:px-3 sm:py-2 border rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1.5 text-xs font-bold ${
+              googleUser
+                ? 'bg-sky-500/10 border-sky-500/30 text-sky-400 hover:bg-sky-500/20'
+                : cardBg
+            }`}
+            aria-label="Copia de seguridad"
+          >
+            {googleUser?.picture ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={googleUser.picture}
+                alt=""
+                className="w-4 h-4 rounded-full object-cover border border-sky-400"
+              />
+            ) : (
+              <Cloud size={17} className={googleUser ? 'text-sky-400' : 'text-slate-400'} />
+            )}
+            <span className="hidden sm:inline">Backup</span>
+          </button>
+
           {/* Sincronizar Modo Viaje si hay datos guardados */}
           {!modoViaje && registrosViajeCount > 0 && (
             <button

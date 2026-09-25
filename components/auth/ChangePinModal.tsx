@@ -1,7 +1,8 @@
 'use client';
-import React, { useState } from 'react';
-import { X, KeyRound, Check, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, KeyRound, Check, AlertCircle, Fingerprint } from 'lucide-react';
 import { verifyPin, saveCustomPin } from '@/lib/security';
+import { isBiometricsAvailable, authenticateWithBiometrics } from '@/lib/biometrics';
 import { useToast } from '@/components/ui/Toast';
 
 interface ChangePinModalProps {
@@ -19,7 +20,31 @@ export function ChangePinModal({
   const [pinNuevo, setPinNuevo] = useState('');
   const [pinConfirmar, setPinConfirmar] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  const { success, error } = useToast();
+  const [hasBiometrics, setHasBiometrics] = useState(false);
+  const [testingBiometrics, setTestingBiometrics] = useState(false);
+  const { success, error, info } = useToast();
+
+  useEffect(() => {
+    if (isOpen) {
+      isBiometricsAvailable().then(setHasBiometrics);
+    }
+  }, [isOpen]);
+
+  const handleTestBiometrics = async () => {
+    setTestingBiometrics(true);
+    try {
+      const res = await authenticateWithBiometrics();
+      if (res.success) {
+        success('¡Lector de huellas verificado exitosamente!');
+      } else if (res.message) {
+        info(res.message);
+      }
+    } catch {
+      error('Error al probar huella digital');
+    } finally {
+      setTestingBiometrics(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -166,6 +191,32 @@ export function ChangePinModal({
             </button>
           </div>
         </form>
+
+        {/* Sección Lector de Huellas */}
+        <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-500">
+                <Fingerprint size={18} />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-100">Desbloqueo por Huella</p>
+                <p className="text-[10px] text-slate-400">
+                  {hasBiometrics ? 'Sensor biométrico activo' : 'Compatible con huella digital / biometría'}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleTestBiometrics}
+              disabled={testingBiometrics}
+              className="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
+            >
+              {testingBiometrics ? 'Probando...' : 'Probar Sensor'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

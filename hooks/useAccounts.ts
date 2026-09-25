@@ -1,6 +1,7 @@
 'use client';
 import { useState, useCallback } from 'react';
 import { useToast } from '@/components/ui/Toast';
+import { scheduleAutoBackup } from '@/services/googleBackup';
 
 export const CUENTAS_INICIALES = [
   'Efectivo',
@@ -33,6 +34,7 @@ export function useAccounts() {
     setCuentas(nuevas);
     if (typeof window !== 'undefined') {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(nuevas));
+      scheduleAutoBackup();
     }
   }, []);
 

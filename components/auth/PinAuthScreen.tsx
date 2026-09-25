@@ -1,6 +1,6 @@
 'use client';
-import React, { useState } from 'react';
-import { Delete, ShieldCheck, Sun, Moon, Lock } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Delete, Sun, Moon, Fingerprint } from 'lucide-react';
 import {
   getStoredPin,
   verifyPin,
@@ -9,6 +9,10 @@ import {
   saveCustomPin,
   setPinDisabled,
 } from '@/lib/security';
+import {
+  isBiometricsAvailable,
+  authenticateWithBiometrics,
+} from '@/lib/biometrics';
 
 interface PinAuthScreenProps {
   darkMode: boolean;
@@ -24,6 +28,9 @@ export function PinAuthScreen({
   const yaConfigurado = typeof window !== 'undefined' ? isPinSetup() : true;
   const [pin, setPin] = useState('');
   const [errorPin, setErrorPin] = useState(false);
+  const [biometricsAvailable, setBiometricsAvailable] = useState(false);
+  const [loadingBiometric, setLoadingBiometric] = useState(false);
+  const [biometricFeedback, setBiometricFeedback] = useState<string | null>(null);
   const [pinLength] = useState(() => {
     if (typeof window !== 'undefined') {
       const stored = getStoredPin();
@@ -31,6 +38,31 @@ export function PinAuthScreen({
     }
     return 4;
   });
+
+  // Comprobar si el dispositivo cuenta con sensor de huellas / biometría
+  useEffect(() => {
+    isBiometricsAvailable().then(avail => {
+      setBiometricsAvailable(avail);
+    });
+  }, []);
+
+  const handleBiometricAuth = async () => {
+    setLoadingBiometric(true);
+    setBiometricFeedback(null);
+    try {
+      const res = await authenticateWithBiometrics();
+      if (res.success) {
+        setSessionAuthenticated(true);
+        onSuccess();
+      } else if (res.message) {
+        setBiometricFeedback(res.message);
+      }
+    } catch {
+      setBiometricFeedback('No se pudo verificar la huella digital.');
+    } finally {
+      setLoadingBiometric(false);
+    }
+  };
 
   const handleKeyPress = (num: string) => {
     if (pin.length >= 6) return;
@@ -132,6 +164,12 @@ export function PinAuthScreen({
           </p>
         )}
 
+        {biometricFeedback && (
+          <p className="text-amber-500 dark:text-amber-400 text-xs font-semibold mb-3">
+            {biometricFeedback}
+          </p>
+        )}
+
         {/* Teclado numérico táctil */}
         <div className="grid grid-cols-3 gap-2.5 max-w-[240px] mx-auto">
           {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(num => (
@@ -139,7 +177,7 @@ export function PinAuthScreen({
               key={num}
               type="button"
               onClick={() => handleKeyPress(num)}
-              className={`h-13 rounded-2xl text-lg font-bold transition-all active:scale-90 flex items-center justify-center ${
+              className={`h-13 rounded-2xl text-lg font-bold transition-all active:scale-90 flex items-center justify-center cursor-pointer ${
                 darkMode
                   ? 'bg-slate-800/80 hover:bg-slate-800 text-slate-100 border border-slate-700/60'
                   : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200 shadow-2xs'
@@ -148,17 +186,25 @@ export function PinAuthScreen({
               {num}
             </button>
           ))}
-          <div className="flex items-center justify-center">
-            {yaConfigurado ? (
-              <ShieldCheck size={18} className="text-slate-400 opacity-60" />
-            ) : (
-              <Lock size={18} className="text-emerald-500 opacity-80" />
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={handleBiometricAuth}
+            disabled={loadingBiometric}
+            title="Desbloquear con huella digital"
+            className={`h-13 rounded-2xl transition-all active:scale-90 flex items-center justify-center cursor-pointer ${
+              loadingBiometric
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 animate-pulse'
+                : darkMode
+                ? 'bg-slate-800/80 hover:bg-slate-800 text-emerald-400 border border-emerald-500/30 shadow-sm'
+                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 shadow-2xs'
+            }`}
+          >
+            <Fingerprint size={24} className={loadingBiometric ? 'animate-pulse' : ''} />
+          </button>
           <button
             type="button"
             onClick={() => handleKeyPress('0')}
-            className={`h-13 rounded-2xl text-lg font-bold transition-all active:scale-90 flex items-center justify-center ${
+            className={`h-13 rounded-2xl text-lg font-bold transition-all active:scale-90 flex items-center justify-center cursor-pointer ${
               darkMode
                 ? 'bg-slate-800/80 hover:bg-slate-800 text-slate-100 border border-slate-700/60'
                 : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200 shadow-2xs'
@@ -169,7 +215,7 @@ export function PinAuthScreen({
           <button
             type="button"
             onClick={handleDelete}
-            className={`h-13 rounded-2xl text-lg font-bold transition-all active:scale-90 flex items-center justify-center ${
+            className={`h-13 rounded-2xl text-lg font-bold transition-all active:scale-90 flex items-center justify-center cursor-pointer ${
               darkMode
                 ? 'bg-slate-800/40 hover:bg-slate-800 text-slate-400'
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-500'
@@ -179,6 +225,21 @@ export function PinAuthScreen({
             <Delete size={20} />
           </button>
         </div>
+
+        {/* Acceso rápido por huella digital */}
+        {biometricsAvailable && (
+          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={handleBiometricAuth}
+              disabled={loadingBiometric}
+              className="w-full py-2.5 px-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-500 dark:text-emerald-400 text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+            >
+              <Fingerprint size={17} />
+              <span>{loadingBiometric ? 'Leyendo huella digital...' : 'Desbloquear con Huella Digital'}</span>
+            </button>
+          </div>
+        )}
 
         {/* Opción de omitir PIN en primer uso */}
         {!yaConfigurado && (

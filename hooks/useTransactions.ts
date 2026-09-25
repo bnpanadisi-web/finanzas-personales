@@ -11,6 +11,7 @@ import {
 } from '@/services/transactions';
 import { useToast } from '@/components/ui/Toast';
 import { DEFAULT_ACCOUNTS } from '@/lib/constants';
+import { scheduleAutoBackup } from '@/services/googleBackup';
 
 const VIAJE_STORAGE_KEY = 'finanzas_registros_viaje';
 
@@ -74,6 +75,7 @@ export function useTransactions(autenticado: boolean, modoViaje: boolean) {
         localStorage.setItem(VIAJE_STORAGE_KEY, JSON.stringify(nuevaLista));
       }
       success('Gasto de viaje guardado en el dispositivo');
+      scheduleAutoBackup();
       return true;
     }
 
@@ -104,6 +106,7 @@ export function useTransactions(autenticado: boolean, modoViaje: boolean) {
         : `${t.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'} registrado correctamente`;
 
     success(mensaje);
+    scheduleAutoBackup();
     return true;
   };
 
@@ -116,6 +119,7 @@ export function useTransactions(autenticado: boolean, modoViaje: boolean) {
         localStorage.setItem(VIAJE_STORAGE_KEY, JSON.stringify(actualizados));
       }
       success('Registro de viaje actualizado');
+      scheduleAutoBackup();
       return true;
     }
 
@@ -131,6 +135,7 @@ export function useTransactions(autenticado: boolean, modoViaje: boolean) {
     }
 
     success('Registro actualizado exitosamente');
+    scheduleAutoBackup();
     return true;
   };
 
@@ -143,6 +148,7 @@ export function useTransactions(autenticado: boolean, modoViaje: boolean) {
         localStorage.setItem(VIAJE_STORAGE_KEY, JSON.stringify(filtrados));
       }
       success('Registro eliminado');
+      scheduleAutoBackup();
       return true;
     }
 
@@ -158,6 +164,7 @@ export function useTransactions(autenticado: boolean, modoViaje: boolean) {
     }
 
     success('Registro eliminado exitosamente');
+    scheduleAutoBackup();
     return true;
   };
 

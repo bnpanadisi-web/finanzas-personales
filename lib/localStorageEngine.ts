@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import { Category, Transaction } from '@/types';
+import { Category, Transaction, Budget, SavingsGoal } from '@/types';
 import { CATEGORIAS_POR_DEFECTO } from '@/services/categories';
 import { CUENTAS_INICIALES } from '@/hooks/useAccounts';
 
@@ -207,5 +207,208 @@ export function saveLocalAccounts(cuentas: string[]): void {
     localStorage.setItem(KEY_CUENTAS, JSON.stringify(cuentas));
   } catch (e) {
     console.error('Error guardando cuentas locales:', e);
+  }
+}
+
+// ----------------------------------------------------
+// COPIA DE SEGURIDAD GENERAL (PARA GOOGLE DRIVE / ARCHIVO)
+// ----------------------------------------------------
+export interface AppBackupData {
+  version: number;
+  exportedAt: string;
+  app: string;
+  data: {
+    transactions: Transaction[];
+    categories: Category[];
+    accounts: string[];
+    budgets: Budget[];
+    savingsGoals: SavingsGoal[];
+    settings?: {
+      darkMode?: boolean;
+      ocultarMontos?: boolean;
+      customPin?: string | null;
+      pinDisabled?: boolean;
+    };
+  };
+}
+
+const KEY_LAST_BACKUP = 'finanzas_last_backup_time';
+
+export function getLastBackupTime(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(KEY_LAST_BACKUP);
+}
+
+export function setLastBackupTime(timeIso: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(KEY_LAST_BACKUP, timeIso);
+}
+
+export function exportAllAppData(currentTransactions?: Transaction[]): AppBackupData {
+  if (typeof window === 'undefined') {
+    return {
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      app: 'Finanzas Personales',
+      data: {
+        transactions: [],
+        categories: [],
+        accounts: [],
+        budgets: [],
+        savingsGoals: [],
+      },
+    };
+  }
+
+  // 1. Transacciones (usa las activas en pantalla o las locales)
+  const transactions = currentTransactions && currentTransactions.length > 0
+    ? currentTransactions
+    : getLocalTransactions();
+
+  // 2. Categorías
+  const categories = getLocalCategories();
+
+  // 3. Cuentas
+  let accounts = getLocalAccounts();
+  try {
+    const rawAcc = localStorage.getItem('finanzas_accounts');
+    if (rawAcc) {
+      const parsedAcc = JSON.parse(rawAcc);
+      if (Array.isArray(parsedAcc) && parsedAcc.length > 0) {
+        accounts = parsedAcc;
+      }
+    }
+  } catch (e) {
+    console.warn('Error leyendo finanzas_accounts:', e);
+  }
+
+  // 4. Presupuestos
+  let budgets: Budget[] = [];
+  try {
+    const rawBudgets = localStorage.getItem('finanzas_budgets_list');
+    if (rawBudgets) budgets = JSON.parse(rawBudgets);
+  } catch (e) {
+    console.warn('Error leyendo presupuestos:', e);
+  }
+
+  // 5. Metas de ahorro / Reservas
+  let savingsGoals: SavingsGoal[] = [];
+  try {
+    const rawSavings = localStorage.getItem('finanzas_savings_goals');
+    if (rawSavings) savingsGoals = JSON.parse(rawSavings);
+  } catch (e) {
+    console.warn('Error leyendo metas de ahorro:', e);
+  }
+
+  // 6. Preferencias
+  const settings = {
+    darkMode: localStorage.getItem('finanzas_dark') === 'true',
+    ocultarMontos: localStorage.getItem('finanzas_privacidad') === 'true',
+    customPin: localStorage.getItem('finanzas_custom_pin'),
+    pinDisabled: localStorage.getItem('finanzas_pin_disabled') === 'true',
+  };
+
+  return {
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    app: 'Finanzas Personales',
+    data: {
+      transactions,
+      categories,
+      accounts,
+      budgets,
+      savingsGoals,
+      settings,
+    },
+  };
+}
+
+export function restoreAllAppData(backup: AppBackupData): {
+  success: boolean;
+  counts: {
+    transactions: number;
+    categories: number;
+    accounts: number;
+    budgets: number;
+    savingsGoals: number;
+  };
+  error?: string;
+} {
+  if (typeof window === 'undefined') {
+    return {
+      success: false,
+      counts: { transactions: 0, categories: 0, accounts: 0, budgets: 0, savingsGoals: 0 },
+      error: 'No se puede restaurar fuera del navegador',
+    };
+  }
+
+  try {
+    if (!backup || !backup.data) {
+      throw new Error('Estructura de archivo de respaldo no válida.');
+    }
+
+    const { data } = backup;
+
+    // Restaurar transacciones
+    if (Array.isArray(data.transactions)) {
+      saveLocalTransactions(data.transactions);
+    }
+
+    // Restaurar categorías
+    if (Array.isArray(data.categories) && data.categories.length > 0) {
+      saveLocalCategories(data.categories);
+    }
+
+    // Restaurar cuentas
+    if (Array.isArray(data.accounts) && data.accounts.length > 0) {
+      saveLocalAccounts(data.accounts);
+      localStorage.setItem('finanzas_accounts', JSON.stringify(data.accounts));
+    }
+
+    // Restaurar presupuestos
+    if (Array.isArray(data.budgets)) {
+      localStorage.setItem('finanzas_budgets_list', JSON.stringify(data.budgets));
+    }
+
+    // Restaurar metas de ahorro
+    if (Array.isArray(data.savingsGoals)) {
+      localStorage.setItem('finanzas_savings_goals', JSON.stringify(data.savingsGoals));
+    }
+
+    // Restaurar ajustes opcionales
+    if (data.settings) {
+      if (typeof data.settings.darkMode === 'boolean') {
+        localStorage.setItem('finanzas_dark', String(data.settings.darkMode));
+      }
+      if (typeof data.settings.ocultarMontos === 'boolean') {
+        localStorage.setItem('finanzas_privacidad', String(data.settings.ocultarMontos));
+      }
+      if (data.settings.customPin) {
+        localStorage.setItem('finanzas_custom_pin', data.settings.customPin);
+      }
+      if (data.settings.pinDisabled) {
+        localStorage.setItem('finanzas_pin_disabled', 'true');
+      }
+    }
+
+    setLastBackupTime(new Date().toISOString());
+
+    return {
+      success: true,
+      counts: {
+        transactions: Array.isArray(data.transactions) ? data.transactions.length : 0,
+        categories: Array.isArray(data.categories) ? data.categories.length : 0,
+        accounts: Array.isArray(data.accounts) ? data.accounts.length : 0,
+        budgets: Array.isArray(data.budgets) ? data.budgets.length : 0,
+        savingsGoals: Array.isArray(data.savingsGoals) ? data.savingsGoals.length : 0,
+      },
+    };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Error desconocido al restaurar datos';
+    return {
+      success: false,
+      counts: { transactions: 0, categories: 0, accounts: 0, budgets: 0, savingsGoals: 0 },
+      error: errorMsg,
+    };
   }
 }

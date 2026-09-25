@@ -2,6 +2,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { SavingsGoal } from '@/types';
 import { useToast } from '@/components/ui/Toast';
+import { scheduleAutoBackup } from '@/services/googleBackup';
 
 const SAVINGS_STORAGE_KEY = 'finanzas_savings_goals';
 
@@ -53,6 +54,7 @@ export function useSavings() {
     setGoals(updated);
     if (typeof window !== 'undefined') {
       localStorage.setItem(SAVINGS_STORAGE_KEY, JSON.stringify(updated));
+      scheduleAutoBackup();
     }
   }, []);
 

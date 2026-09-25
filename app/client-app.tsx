@@ -18,6 +18,12 @@ import { CategoryModal } from '@/components/categories/CategoryModal';
 import { AccountModal } from '@/components/accounts/AccountModal';
 import { ExportModal } from '@/components/export/ExportModal';
 import { ChangePinModal } from '@/components/auth/ChangePinModal';
+import { GoogleBackupModal } from '@/components/backup/GoogleBackupModal';
+import {
+  GoogleUserProfile,
+  getStoredGoogleUser,
+  checkAndRunPeriodicAutoBackup,
+} from '@/services/googleBackup';
 import { isSessionAuthenticated, logoutUser } from '@/lib/security';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useCategories } from '@/hooks/useCategories';
@@ -63,6 +69,8 @@ function FinanzasAppContent() {
   const [mostrarModalCuentas, setMostrarModalCuentas] = useState(false);
   const [mostrarModalExportar, setMostrarModalExportar] = useState(false);
   const [mostrarModalPin, setMostrarModalPin] = useState(false);
+  const [mostrarModalBackup, setMostrarModalBackup] = useState(false);
+  const [googleUser, setGoogleUser] = useState<GoogleUserProfile | null>(() => getStoredGoogleUser());
   const [editandoRegistro, setEditandoRegistro] = useState<Transaction | null>(null);
   const [dialogoEliminar, setDialogoEliminar] = useState<{
     abierto: boolean;
@@ -123,6 +131,22 @@ function FinanzasAppContent() {
     return () => {
       clearTimeout(timer);
       eventos.forEach(ev => window.removeEventListener(ev, reiniciarInactividad));
+    };
+  }, [autenticado]);
+
+  // Ejecutar verificación de respaldo automático periódico en segundo plano
+  useEffect(() => {
+    if (!autenticado || typeof window === 'undefined') return;
+
+    checkAndRunPeriodicAutoBackup();
+
+    const onBackupUpdated = () => {
+      setGoogleUser(getStoredGoogleUser());
+    };
+
+    window.addEventListener('finanzas_backup_updated', onBackupUpdated);
+    return () => {
+      window.removeEventListener('finanzas_backup_updated', onBackupUpdated);
     };
   }, [autenticado]);
 
@@ -317,6 +341,8 @@ function FinanzasAppContent() {
         onOpenChangePin={() => setMostrarModalPin(true)}
         onLogout={handleLogout}
         rates={rates}
+        onOpenBackupModal={() => setMostrarModalBackup(true)}
+        googleUser={googleUser}
       />
 
       {/* Selector de Pestañas */}
@@ -547,6 +573,20 @@ function FinanzasAppContent() {
         esDestructivo={true}
         onConfirm={handleConfirmDelete}
         onCancel={() => setDialogoEliminar({ abierto: false, id: null })}
+      />
+
+      {/* MODAL: COPIA DE SEGURIDAD EN GOOGLE DRIVE Y LOCAL */}
+      <GoogleBackupModal
+        isOpen={mostrarModalBackup}
+        onClose={() => {
+          setMostrarModalBackup(false);
+          setGoogleUser(getStoredGoogleUser());
+        }}
+        onDataRestored={() => {
+          setGoogleUser(getStoredGoogleUser());
+        }}
+        transacciones={todasLasTransacciones.length > 0 ? todasLasTransacciones : transacciones}
+        darkMode={darkMode}
       />
     </main>
   );
