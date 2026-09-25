@@ -41,73 +41,24 @@ export interface GoogleUserProfile {
 
 const STORAGE_KEY_GOOGLE_USER = 'finanzas_google_user';
 const STORAGE_KEY_CUSTOM_CLIENT_ID = 'finanzas_google_client_id';
-const STORAGE_KEY_KNOWN_GMAILS = 'finanzas_known_gmails';
-const STORAGE_KEY_PROFILES_MAP = 'finanzas_google_profiles_map';
 const BACKUP_FILE_NAME = 'FinanzasPersonales_Backup.json';
-
-export function getKnownGmailAccounts(): string[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_KNOWN_GMAILS);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch (e) {
-    console.error('Error leyendo cuentas Gmail conocidas:', e);
-  }
-  return ['bnpanadisi@gmail.com'];
-}
-
-export function saveKnownGmailAccount(email: string): void {
-  if (typeof window === 'undefined') return;
-  const clean = email.trim().toLowerCase();
-  if (!clean || !clean.includes('@')) return;
-  const current = getKnownGmailAccounts();
-  const set = new Set([clean, ...current]);
-  localStorage.setItem(STORAGE_KEY_KNOWN_GMAILS, JSON.stringify(Array.from(set)));
-}
-
-export function removeKnownGmailAccount(email: string): void {
-  if (typeof window === 'undefined') return;
-  const clean = email.trim().toLowerCase();
-  const current = getKnownGmailAccounts().filter(e => e.toLowerCase() !== clean);
-  localStorage.setItem(STORAGE_KEY_KNOWN_GMAILS, JSON.stringify(current));
-}
-
-export function getSavedGoogleProfilesMap(): Record<string, GoogleUserProfile> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_PROFILES_MAP);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return {};
-}
-
-export function selectGmailAccount(email: string): GoogleUserProfile {
-  const cleanEmail = email.trim().toLowerCase();
-  saveKnownGmailAccount(cleanEmail);
-  const map = getSavedGoogleProfilesMap();
-  let profile = map[cleanEmail];
-  if (!profile) {
-    const name = cleanEmail.split('@')[0] || 'Usuario Gmail';
-    profile = {
-      name,
-      email: cleanEmail,
-      picture: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0284c7&color=fff`,
-      accessToken: 'demo_token_' + Date.now(),
-      expiresAt: Date.now() + 3600 * 1000,
-    };
-  }
-  saveStoredGoogleUser(profile);
-  return profile;
-}
 
 export function getStoredGoogleUser(): GoogleUserProfile | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(STORAGE_KEY_GOOGLE_USER);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed: GoogleUserProfile = JSON.parse(raw);
+      // Eliminar residuos de cuentas demo simuladas anteriores
+      if (
+        (parsed.accessToken && parsed.accessToken.startsWith('demo_token_')) ||
+        (parsed.email && parsed.email.includes('demo'))
+      ) {
+        localStorage.removeItem(STORAGE_KEY_GOOGLE_USER);
+        return null;
+      }
+      return parsed;
+    }
   } catch (e) {
     console.error('Error leyendo perfil de Google:', e);
   }
@@ -118,12 +69,6 @@ export function saveStoredGoogleUser(user: GoogleUserProfile | null): void {
   if (typeof window === 'undefined') return;
   if (user) {
     localStorage.setItem(STORAGE_KEY_GOOGLE_USER, JSON.stringify(user));
-    if (user.email) {
-      saveKnownGmailAccount(user.email);
-      const map = getSavedGoogleProfilesMap();
-      map[user.email.toLowerCase()] = user;
-      localStorage.setItem(STORAGE_KEY_PROFILES_MAP, JSON.stringify(map));
-    }
   } else {
     localStorage.removeItem(STORAGE_KEY_GOOGLE_USER);
   }
@@ -179,8 +124,7 @@ export function loadGoogleGsiScript(): Promise<boolean> {
  * permitiendo elegir explícitamente la cuenta de Gmail (prompt: 'select_account')
  */
 export async function requestGoogleAccessToken(
-  clientIdParam?: string,
-  targetEmail?: string
+  clientIdParam?: string
 ): Promise<{
   token?: string;
   user?: GoogleUserProfile;
@@ -188,17 +132,17 @@ export async function requestGoogleAccessToken(
 }> {
   const clientId = clientIdParam || getGoogleClientId();
 
-  // Si no hay Client ID de Google configurado, permitimos seleccionar/ingresar la cuenta Gmail deseada
+  // No permitir modo demo: exigir Client ID real de Google Cloud
   if (!clientId) {
-    const email = targetEmail?.trim() || 'bnpanadisi@gmail.com';
-    const profile = selectGmailAccount(email);
-    return { token: profile.accessToken, user: profile };
+    return {
+      error: 'missing_client_id',
+    };
   }
 
   await loadGoogleGsiScript();
 
   if (!window.google?.accounts?.oauth2) {
-    return { error: 'El SDK de Google no está disponible.' };
+    return { error: 'El SDK de autenticación de Google no está disponible.' };
   }
 
   return new Promise(resolve => {
@@ -215,12 +159,12 @@ export async function requestGoogleAccessToken(
 
           const accessToken = response.access_token;
           if (!accessToken) {
-            resolve({ error: 'No se recibió token de acceso.' });
+            resolve({ error: 'No se recibió token de acceso de Google.' });
             return;
           }
 
           try {
-            // Obtener perfil del usuario
+            // Obtener perfil del usuario real desde Google
             const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
               headers: { Authorization: `Bearer ${accessToken}` },
             });
@@ -238,15 +182,14 @@ export async function requestGoogleAccessToken(
             resolve({ token: accessToken, user: profile });
           } catch (e: unknown) {
             console.error('Error al obtener perfil:', e);
-            resolve({ token: accessToken, error: 'No se pudo obtener información de la cuenta' });
+            resolve({ token: accessToken, error: 'No se pudo obtener información del perfil de Google' });
           }
         },
       });
 
-      // prompt: 'select_account' para que Google SIEMPRE muestre la pantalla de elegir cuenta
+      // prompt: 'select_account' para que Google SIEMPRE abra la ventana de selección de cuentas
       client.requestAccessToken({
         prompt: 'select_account',
-        hint: targetEmail || undefined,
       });
     } catch (err: unknown) {
       const errObj = err as { message?: string };
@@ -287,23 +230,10 @@ export async function uploadBackupToGoogleDrive(
   const user = getStoredGoogleUser();
   const token = accessToken || user?.accessToken;
 
-  // Modo Demo / Local si no hay token real
   if (!token || token.startsWith('demo_token_')) {
-    const snapshot = exportAllAppData(currentTransactions);
-    const dateIso = new Date().toISOString();
-    setLastBackupTime(dateIso);
-    if (typeof window !== 'undefined') {
-      const mockKey = user?.email
-        ? `finanzas_cloud_mock_backup_${user.email.toLowerCase()}`
-        : 'finanzas_cloud_mock_backup';
-      localStorage.setItem(mockKey, JSON.stringify(snapshot));
-      localStorage.setItem('finanzas_cloud_mock_backup', JSON.stringify(snapshot));
-    }
-    const accLabel = user?.email ? ` (${user.email})` : '';
     return {
-      success: true,
-      message: `Copia de seguridad guardada con éxito para la cuenta${accLabel}.`,
-      date: dateIso,
+      success: false,
+      message: 'No hay una sesión activa de Google. Por favor inicia sesión con Google.',
     };
   }
 
@@ -395,33 +325,10 @@ export async function restoreBackupFromGoogleDrive(
   const user = getStoredGoogleUser();
   const token = accessToken || user?.accessToken;
 
-  // Modo Demo / Mock si no hay token real
   if (!token || token.startsWith('demo_token_')) {
-    if (typeof window !== 'undefined') {
-      const mockKey = user?.email
-        ? `finanzas_cloud_mock_backup_${user.email.toLowerCase()}`
-        : 'finanzas_cloud_mock_backup';
-      const mockRaw = localStorage.getItem(mockKey) || localStorage.getItem('finanzas_cloud_mock_backup');
-      if (mockRaw) {
-        try {
-          const parsed = JSON.parse(mockRaw);
-          const res = restoreAllAppData(parsed);
-          if (res.success) {
-            const accLabel = user?.email ? ` (${user.email})` : '';
-            return {
-              success: true,
-              message: `Copia restaurada exitosamente para la cuenta${accLabel}.`,
-              counts: res.counts,
-            };
-          }
-        } catch (e) {
-          console.error(e);
-        }
-      }
-    }
     return {
       success: false,
-      message: `No se encontró ninguna copia previa en la nube para la cuenta ${user?.email || 'seleccionada'}.`,
+      message: 'No hay una sesión activa de Google. Por favor inicia sesión con Google.',
     };
   }
 
