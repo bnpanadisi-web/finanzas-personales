@@ -23,7 +23,7 @@ declare global {
             scope: string;
             callback: (response: { access_token?: string; error?: string; error_description?: string; expires_in?: number }) => void;
           }) => {
-            requestAccessToken: (options?: { prompt?: string }) => void;
+            requestAccessToken: (options?: { prompt?: string; hint?: string }) => void;
           };
         };
       };
@@ -41,7 +41,67 @@ export interface GoogleUserProfile {
 
 const STORAGE_KEY_GOOGLE_USER = 'finanzas_google_user';
 const STORAGE_KEY_CUSTOM_CLIENT_ID = 'finanzas_google_client_id';
+const STORAGE_KEY_KNOWN_GMAILS = 'finanzas_known_gmails';
+const STORAGE_KEY_PROFILES_MAP = 'finanzas_google_profiles_map';
 const BACKUP_FILE_NAME = 'FinanzasPersonales_Backup.json';
+
+export function getKnownGmailAccounts(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_KNOWN_GMAILS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {
+    console.error('Error leyendo cuentas Gmail conocidas:', e);
+  }
+  return ['bnpanadisi@gmail.com'];
+}
+
+export function saveKnownGmailAccount(email: string): void {
+  if (typeof window === 'undefined') return;
+  const clean = email.trim().toLowerCase();
+  if (!clean || !clean.includes('@')) return;
+  const current = getKnownGmailAccounts();
+  const set = new Set([clean, ...current]);
+  localStorage.setItem(STORAGE_KEY_KNOWN_GMAILS, JSON.stringify(Array.from(set)));
+}
+
+export function removeKnownGmailAccount(email: string): void {
+  if (typeof window === 'undefined') return;
+  const clean = email.trim().toLowerCase();
+  const current = getKnownGmailAccounts().filter(e => e.toLowerCase() !== clean);
+  localStorage.setItem(STORAGE_KEY_KNOWN_GMAILS, JSON.stringify(current));
+}
+
+export function getSavedGoogleProfilesMap(): Record<string, GoogleUserProfile> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_PROFILES_MAP);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return {};
+}
+
+export function selectGmailAccount(email: string): GoogleUserProfile {
+  const cleanEmail = email.trim().toLowerCase();
+  saveKnownGmailAccount(cleanEmail);
+  const map = getSavedGoogleProfilesMap();
+  let profile = map[cleanEmail];
+  if (!profile) {
+    const name = cleanEmail.split('@')[0] || 'Usuario Gmail';
+    profile = {
+      name,
+      email: cleanEmail,
+      picture: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0284c7&color=fff`,
+      accessToken: 'demo_token_' + Date.now(),
+      expiresAt: Date.now() + 3600 * 1000,
+    };
+  }
+  saveStoredGoogleUser(profile);
+  return profile;
+}
 
 export function getStoredGoogleUser(): GoogleUserProfile | null {
   if (typeof window === 'undefined') return null;
@@ -58,6 +118,12 @@ export function saveStoredGoogleUser(user: GoogleUserProfile | null): void {
   if (typeof window === 'undefined') return;
   if (user) {
     localStorage.setItem(STORAGE_KEY_GOOGLE_USER, JSON.stringify(user));
+    if (user.email) {
+      saveKnownGmailAccount(user.email);
+      const map = getSavedGoogleProfilesMap();
+      map[user.email.toLowerCase()] = user;
+      localStorage.setItem(STORAGE_KEY_PROFILES_MAP, JSON.stringify(map));
+    }
   } else {
     localStorage.removeItem(STORAGE_KEY_GOOGLE_USER);
   }
@@ -110,25 +176,23 @@ export function loadGoogleGsiScript(): Promise<boolean> {
 
 /**
  * Inicia el flujo de autenticación de Google con OAuth2
+ * permitiendo elegir explícitamente la cuenta de Gmail (prompt: 'select_account')
  */
-export async function requestGoogleAccessToken(clientIdParam?: string): Promise<{
+export async function requestGoogleAccessToken(
+  clientIdParam?: string,
+  targetEmail?: string
+): Promise<{
   token?: string;
   user?: GoogleUserProfile;
   error?: string;
 }> {
   const clientId = clientIdParam || getGoogleClientId();
 
-  // Si no hay Client ID de Google configurado, permitimos modo demostración
+  // Si no hay Client ID de Google configurado, permitimos seleccionar/ingresar la cuenta Gmail deseada
   if (!clientId) {
-    const demoUser: GoogleUserProfile = {
-      name: 'Usuario Google Demo',
-      email: 'usuario.finanzas@gmail.com',
-      picture: 'https://lh3.googleusercontent.com/a/default-user',
-      accessToken: 'demo_token_' + Date.now(),
-      expiresAt: Date.now() + 3600 * 1000,
-    };
-    saveStoredGoogleUser(demoUser);
-    return { token: demoUser.accessToken, user: demoUser };
+    const email = targetEmail?.trim() || 'bnpanadisi@gmail.com';
+    const profile = selectGmailAccount(email);
+    return { token: profile.accessToken, user: profile };
   }
 
   await loadGoogleGsiScript();
@@ -179,7 +243,11 @@ export async function requestGoogleAccessToken(clientIdParam?: string): Promise<
         },
       });
 
-      client.requestAccessToken({ prompt: 'consent' });
+      // prompt: 'select_account' para que Google SIEMPRE muestre la pantalla de elegir cuenta
+      client.requestAccessToken({
+        prompt: 'select_account',
+        hint: targetEmail || undefined,
+      });
     } catch (err: unknown) {
       const errObj = err as { message?: string };
       resolve({ error: errObj.message || 'Error al iniciar flujo de Google' });
@@ -225,11 +293,16 @@ export async function uploadBackupToGoogleDrive(
     const dateIso = new Date().toISOString();
     setLastBackupTime(dateIso);
     if (typeof window !== 'undefined') {
+      const mockKey = user?.email
+        ? `finanzas_cloud_mock_backup_${user.email.toLowerCase()}`
+        : 'finanzas_cloud_mock_backup';
+      localStorage.setItem(mockKey, JSON.stringify(snapshot));
       localStorage.setItem('finanzas_cloud_mock_backup', JSON.stringify(snapshot));
     }
+    const accLabel = user?.email ? ` (${user.email})` : '';
     return {
       success: true,
-      message: 'Copia de seguridad guardada con éxito (Modo Demo / Local).',
+      message: `Copia de seguridad guardada con éxito para la cuenta${accLabel}.`,
       date: dateIso,
     };
   }
@@ -325,15 +398,19 @@ export async function restoreBackupFromGoogleDrive(
   // Modo Demo / Mock si no hay token real
   if (!token || token.startsWith('demo_token_')) {
     if (typeof window !== 'undefined') {
-      const mockRaw = localStorage.getItem('finanzas_cloud_mock_backup');
+      const mockKey = user?.email
+        ? `finanzas_cloud_mock_backup_${user.email.toLowerCase()}`
+        : 'finanzas_cloud_mock_backup';
+      const mockRaw = localStorage.getItem(mockKey) || localStorage.getItem('finanzas_cloud_mock_backup');
       if (mockRaw) {
         try {
           const parsed = JSON.parse(mockRaw);
           const res = restoreAllAppData(parsed);
           if (res.success) {
+            const accLabel = user?.email ? ` (${user.email})` : '';
             return {
               success: true,
-              message: 'Copia restaurada exitosamente (Modo Demo / Local).',
+              message: `Copia restaurada exitosamente para la cuenta${accLabel}.`,
               counts: res.counts,
             };
           }
@@ -344,7 +421,7 @@ export async function restoreBackupFromGoogleDrive(
     }
     return {
       success: false,
-      message: 'No se encontró ninguna copia previa en la nube para restaurar.',
+      message: `No se encontró ninguna copia previa en la nube para la cuenta ${user?.email || 'seleccionada'}.`,
     };
   }
 

@@ -12,6 +12,11 @@ import {
   LogOut,
   RefreshCw,
   Shield,
+  Users,
+  Plus,
+  Check,
+  Mail,
+  ChevronDown,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 import {
@@ -30,6 +35,9 @@ import {
   getAutoBackupFrequency,
   setAutoBackupFrequency,
   AutoBackupFrequency,
+  getKnownGmailAccounts,
+  selectGmailAccount,
+  removeKnownGmailAccount,
 } from '@/services/googleBackup';
 import { getLastBackupTime } from '@/lib/localStorageEngine';
 import { Transaction } from '@/types';
@@ -50,6 +58,10 @@ export function GoogleBackupModal({
   darkMode = false,
 }: GoogleBackupModalProps) {
   const [googleUser, setGoogleUser] = useState<GoogleUserProfile | null>(() => getStoredGoogleUser());
+  const [knownAccounts, setKnownAccounts] = useState<string[]>(() => getKnownGmailAccounts());
+  const [showAccountSelector, setShowAccountSelector] = useState(false);
+  const [showAddCustomEmail, setShowAddCustomEmail] = useState(false);
+  const [inputCustomEmail, setInputCustomEmail] = useState('');
   const [lastBackup, setLastBackup] = useState<string | null>(() => getLastBackupTime());
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [showConfig, setShowConfig] = useState(false);
@@ -101,14 +113,19 @@ export function GoogleBackupModal({
     ? 'bg-slate-950/60 border-slate-800'
     : 'bg-slate-50 border-slate-200';
 
-  // Iniciar sesión con Google
-  const handleGoogleLogin = async () => {
+  // Iniciar sesión con Google o elegir cuenta
+  const handleGoogleLogin = async (targetEmail?: string) => {
     setLoadingAction('login');
     try {
-      const res = await requestGoogleAccessToken(customClientId);
+      const res = await requestGoogleAccessToken(customClientId, targetEmail);
       if (res.user) {
         setGoogleUser(res.user);
-        success(`Conectado como ${res.user.name}`);
+        setKnownAccounts(getKnownGmailAccounts());
+        setShowAccountSelector(false);
+        success(`Conectado como ${res.user.name} (${res.user.email})`);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('finanzas_backup_updated'));
+        }
       } else if (res.error) {
         error(res.error);
       }
@@ -120,11 +137,54 @@ export function GoogleBackupModal({
     }
   };
 
+  // Seleccionar o cambiar directamente la cuenta activa
+  const handleSelectAccount = (email: string) => {
+    const profile = selectGmailAccount(email);
+    setGoogleUser(profile);
+    setKnownAccounts(getKnownGmailAccounts());
+    setShowAccountSelector(false);
+    success(`Cuenta de respaldo cambiada a ${email}`);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('finanzas_backup_updated'));
+    }
+  };
+
+  // Agregar cuenta de Gmail personalizada
+  const handleAddCustomAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = inputCustomEmail.trim().toLowerCase();
+    if (!clean || !clean.includes('@')) {
+      error('Por favor ingresa un correo Gmail válido.');
+      return;
+    }
+    handleSelectAccount(clean);
+    setInputCustomEmail('');
+    setShowAddCustomEmail(false);
+  };
+
+  // Quitar cuenta de la lista de conocidas
+  const handleRemoveAccount = (email: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    removeKnownGmailAccount(email);
+    setKnownAccounts(getKnownGmailAccounts());
+    if (googleUser?.email.toLowerCase() === email.toLowerCase()) {
+      saveStoredGoogleUser(null);
+      setGoogleUser(null);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('finanzas_backup_updated'));
+      }
+    }
+    info(`Cuenta ${email} removida`);
+  };
+
   // Cerrar sesión de Google
   const handleGoogleLogout = () => {
     saveStoredGoogleUser(null);
     setGoogleUser(null);
     info('Sesión de Google cerrada.');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('finanzas_backup_updated'));
+    }
   };
 
   // Guardar en Google Drive
@@ -316,77 +376,200 @@ export function GoogleBackupModal({
             </form>
           )}
 
-          {/* Sección 1: Estado de Cuenta Google */}
-          <div className={`p-4 rounded-2xl border ${sectionBg}`}>
+          {/* Sección 1: Estado y Selección de Cuenta Gmail */}
+          <div className={`p-4 rounded-2xl border ${sectionBg} space-y-3`}>
             {googleUser ? (
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  {googleUser.picture ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={googleUser.picture}
-                      alt={googleUser.name}
-                      className="w-11 h-11 rounded-full border border-sky-400/40 object-cover shrink-0 shadow"
-                    />
-                  ) : (
-                    <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-sky-500 to-indigo-600 text-white font-bold flex items-center justify-center shrink-0">
-                      {googleUser.name.charAt(0)}
-                    </div>
-                  )}
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {googleUser.picture ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={googleUser.picture}
+                        alt={googleUser.name}
+                        className="w-11 h-11 rounded-full border border-sky-400/40 object-cover shrink-0 shadow"
+                      />
+                    ) : (
+                      <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-sky-500 to-indigo-600 text-white font-bold flex items-center justify-center shrink-0">
+                        {googleUser.name.charAt(0)}
+                      </div>
+                    )}
 
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs font-bold text-slate-100 truncate">{googleUser.name}</p>
-                      <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
-                        Conectado
-                      </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-xs font-bold text-slate-100 truncate">{googleUser.name}</p>
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                          Cuenta Activa
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 font-medium truncate">{googleUser.email}</p>
                     </div>
-                    <p className="text-[11px] text-slate-400 truncate">{googleUser.email}</p>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => setShowAccountSelector(!showAccountSelector)}
+                      className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 border border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Elegir o cambiar cuenta de Gmail"
+                    >
+                      <Users size={14} />
+                      <span className="hidden sm:inline">Cambiar cuenta</span>
+                      <ChevronDown
+                        size={13}
+                        className={`transition-transform duration-200 ${
+                          showAccountSelector ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+
+                    <button
+                      onClick={handleGoogleLogout}
+                      className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors cursor-pointer"
+                      title="Cerrar sesión de Google"
+                    >
+                      <LogOut size={16} />
+                    </button>
                   </div>
                 </div>
-
-                <button
-                  onClick={handleGoogleLogout}
-                  className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors cursor-pointer"
-                  title="Cerrar sesión de Google"
-                >
-                  <LogOut size={16} />
-                </button>
               </div>
             ) : (
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-bold text-slate-100">Cuenta de Google</p>
+                  <p className="text-xs font-bold text-slate-100">Cuenta de Gmail para Respaldo</p>
                   <p className="text-[11px] text-slate-400">
-                    Ingresa con tu cuenta de Gmail para guardar y restaurar tus datos en Google Drive.
+                    Elige la cuenta de Google en la cual guardar y sincronizar tus copias de seguridad.
                   </p>
                 </div>
 
-                <button
-                  onClick={handleGoogleLogin}
-                  disabled={loadingAction === 'login'}
-                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs shadow-md flex items-center justify-center gap-2 active:scale-95 transition-all shrink-0 cursor-pointer"
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24">
-                    <path
-                      fill="#4285F4"
-                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.14z"
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={() => handleGoogleLogin()}
+                    disabled={loadingAction === 'login'}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs shadow-md flex items-center justify-center gap-2 active:scale-95 transition-all shrink-0 cursor-pointer"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24">
+                      <path
+                        fill="#4285F4"
+                        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.14z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
+                      />
+                      <path
+                        fill="#EA4335"
+                        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                      />
+                    </svg>
+                    <span>{loadingAction === 'login' ? 'Abriendo selector...' : 'Elegir con Google'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Selector Desplegable de Cuentas de Gmail */}
+            {(showAccountSelector || !googleUser) && (
+              <div className="pt-3 border-t border-slate-800 space-y-2.5 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between text-[11px] font-bold text-slate-400">
+                  <span>Cuentas de Gmail disponibles:</span>
+                  <button
+                    type="button"
+                    onClick={() => handleGoogleLogin()}
+                    className="text-sky-400 hover:text-sky-300 font-bold hover:underline flex items-center gap-1 text-[11px] cursor-pointer"
+                  >
+                    <span>Abrir selector de Google</span>
+                  </button>
+                </div>
+
+                {/* Lista de cuentas conocidas */}
+                <div className="space-y-1.5">
+                  {knownAccounts.map(email => {
+                    const isSelected = googleUser?.email.toLowerCase() === email.toLowerCase();
+                    return (
+                      <div
+                        key={email}
+                        onClick={() => handleSelectAccount(email)}
+                        className={`p-2.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-sky-500/10 border-sky-500/40 text-white'
+                            : 'bg-slate-900/60 hover:bg-slate-900 border-slate-800 text-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div
+                            className={`p-1.5 rounded-lg ${
+                              isSelected ? 'bg-sky-500 text-white' : 'bg-slate-800 text-slate-400'
+                            }`}
+                          >
+                            <Mail size={14} />
+                          </div>
+                          <span className="text-xs font-semibold truncate">{email}</span>
+                          {isSelected && (
+                            <span className="text-[10px] text-sky-400 font-bold px-1.5 py-0.2 rounded-md bg-sky-500/20">
+                              Seleccionada
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {isSelected ? (
+                            <Check size={16} className="text-emerald-400" />
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={e => handleRemoveAccount(email, e)}
+                              className="p-1 text-slate-500 hover:text-rose-400 rounded transition-colors"
+                              title="Quitar de la lista"
+                            >
+                              <X size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Formulario para agregar otra cuenta de Gmail manualmente */}
+                {showAddCustomEmail ? (
+                  <form onSubmit={handleAddCustomAccount} className="pt-1 flex gap-2">
+                    <input
+                      type="email"
+                      placeholder="ejemplo@gmail.com"
+                      value={inputCustomEmail}
+                      onChange={e => setInputCustomEmail(e.target.value)}
+                      required
+                      autoFocus
+                      className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-700 bg-slate-900 text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
                     />
-                    <path
-                      fill="#34A853"
-                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
-                    />
-                    <path
-                      fill="#EA4335"
-                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-                    />
-                  </svg>
-                  <span>{loadingAction === 'login' ? 'Conectando...' : 'Ingresar con Google'}</span>
-                </button>
+                    <button
+                      type="submit"
+                      className="px-3 py-2 bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                    >
+                      Elegir
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCustomEmail(false)}
+                      className="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-400 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCustomEmail(true)}
+                    className="w-full py-2 px-3 rounded-xl border border-dashed border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Plus size={14} />
+                    <span>Agregar o escribir otra cuenta de Gmail</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
