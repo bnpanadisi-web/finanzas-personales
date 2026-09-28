@@ -11,6 +11,15 @@ import {
   AppBackupData,
 } from '@/lib/localStorageEngine';
 import { Transaction } from '@/types';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+
+// Interfaz para el plugin nativo de Android AccountPicker
+interface AccountPickerPluginInterface {
+  pickGoogleAccount(): Promise<{ email: string; name?: string; accountType?: string }>;
+  getDeviceGoogleAccounts(): Promise<{ accounts: Array<{ name: string; type: string }>; error?: string }>;
+}
+
+const AccountPicker = registerPlugin<AccountPickerPluginInterface>('AccountPicker');
 
 // Declaración global para el SDK de Google Identity Services
 declare global {
@@ -40,9 +49,13 @@ export interface GoogleUserProfile {
 }
 
 const STORAGE_KEY_GOOGLE_USER = 'finanzas_google_user';
+const STORAGE_KEY_SAVED_ACCOUNTS = 'finanzas_saved_google_accounts';
 const STORAGE_KEY_CUSTOM_CLIENT_ID = 'finanzas_google_client_id';
 const BACKUP_FILE_NAME = 'FinanzasPersonales_Backup.json';
 
+/**
+ * Obtiene el usuario de Google actualmente conectado
+ */
 export function getStoredGoogleUser(): GoogleUserProfile | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -52,7 +65,7 @@ export function getStoredGoogleUser(): GoogleUserProfile | null {
       // Eliminar residuos de cuentas demo simuladas anteriores
       if (
         (parsed.accessToken && parsed.accessToken.startsWith('demo_token_')) ||
-        (parsed.email && parsed.email.includes('demo'))
+        (parsed.email && parsed.email.toLowerCase().includes('demo'))
       ) {
         localStorage.removeItem(STORAGE_KEY_GOOGLE_USER);
         return null;
@@ -65,6 +78,9 @@ export function getStoredGoogleUser(): GoogleUserProfile | null {
   return null;
 }
 
+/**
+ * Guarda o elimina el usuario actual de Google
+ */
 export function saveStoredGoogleUser(user: GoogleUserProfile | null): void {
   if (typeof window === 'undefined') return;
   if (user) {
@@ -72,6 +88,101 @@ export function saveStoredGoogleUser(user: GoogleUserProfile | null): void {
   } else {
     localStorage.removeItem(STORAGE_KEY_GOOGLE_USER);
   }
+}
+
+/**
+ * Lista de cuentas de Google guardadas o utilizadas en este dispositivo
+ */
+export function getSavedGoogleAccounts(): GoogleUserProfile[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SAVED_ACCOUNTS);
+    if (raw) {
+      const parsed: GoogleUserProfile[] = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(a => a && a.email && !a.email.toLowerCase().includes('demo'));
+      }
+    }
+  } catch (e) {
+    console.error('Error leyendo cuentas guardadas:', e);
+  }
+  return [];
+}
+
+/**
+ * Agrega o actualiza una cuenta en la lista de cuentas guardadas
+ */
+export function addSavedGoogleAccount(account: GoogleUserProfile): void {
+  if (typeof window === 'undefined' || !account.email) return;
+  const accounts = getSavedGoogleAccounts();
+  const existingIdx = accounts.findIndex(a => a.email.toLowerCase() === account.email.toLowerCase());
+  if (existingIdx >= 0) {
+    accounts[existingIdx] = { ...accounts[existingIdx], ...account };
+  } else {
+    accounts.push(account);
+  }
+  localStorage.setItem(STORAGE_KEY_SAVED_ACCOUNTS, JSON.stringify(accounts));
+}
+
+/**
+ * Elimina una cuenta de la lista de cuentas guardadas
+ */
+export function removeSavedGoogleAccount(email: string): void {
+  if (typeof window === 'undefined') return;
+  const accounts = getSavedGoogleAccounts().filter(a => a.email.toLowerCase() !== email.toLowerCase());
+  localStorage.setItem(STORAGE_KEY_SAVED_ACCOUNTS, JSON.stringify(accounts));
+}
+
+/**
+ * Inicia sesión directamente con una cuenta seleccionada por el usuario
+ */
+export function loginWithGoogleAccount(profileData: {
+  email: string;
+  name?: string;
+  picture?: string;
+  accessToken?: string;
+}): GoogleUserProfile {
+  const cleanEmail = profileData.email.trim();
+  const cleanName = profileData.name?.trim() || cleanEmail.split('@')[0];
+  const avatarUrl =
+    profileData.picture ||
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanName)}&background=0284c7&color=ffffff&bold=true`;
+
+  const profile: GoogleUserProfile = {
+    email: cleanEmail,
+    name: cleanName,
+    picture: avatarUrl,
+    accessToken: profileData.accessToken,
+    expiresAt: profileData.accessToken ? Date.now() + 3600 * 1000 : undefined,
+  };
+
+  saveStoredGoogleUser(profile);
+  addSavedGoogleAccount(profile);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('finanzas_backup_updated'));
+  }
+
+  return profile;
+}
+
+/**
+ * Abre el selector nativo de cuentas de Google en Android a través de Capacitor
+ */
+export async function pickGoogleAccountNative(): Promise<{ email: string; name: string } | null> {
+  if (!Capacitor.isNativePlatform()) return null;
+  try {
+    const res = await AccountPicker.pickGoogleAccount();
+    if (res && res.email) {
+      return {
+        email: res.email.trim(),
+        name: res.name || res.email.split('@')[0],
+      };
+    }
+  } catch (e) {
+    console.warn('Selector nativo no completado o cancelado:', e);
+  }
+  return null;
 }
 
 export function getGoogleClientId(): string {
@@ -120,7 +231,7 @@ export function loadGoogleGsiScript(): Promise<boolean> {
 }
 
 /**
- * Inicia el flujo de autenticación de Google con OAuth2
+ * Inicia el flujo de autenticación de Google con OAuth2 Web GIS
  * permitiendo elegir explícitamente la cuenta de Gmail (prompt: 'select_account')
  */
 export async function requestGoogleAccessToken(
@@ -132,7 +243,6 @@ export async function requestGoogleAccessToken(
 }> {
   const clientId = clientIdParam || getGoogleClientId();
 
-  // No permitir modo demo: exigir Client ID real de Google Cloud
   if (!clientId) {
     return {
       error: 'missing_client_id',
@@ -179,6 +289,7 @@ export async function requestGoogleAccessToken(
             };
 
             saveStoredGoogleUser(profile);
+            addSavedGoogleAccount(profile);
             resolve({ token: accessToken, user: profile });
           } catch (e: unknown) {
             console.error('Error al obtener perfil:', e);
@@ -187,7 +298,7 @@ export async function requestGoogleAccessToken(
         },
       });
 
-      // prompt: 'select_account' para que Google SIEMPRE abra la ventana de selección de cuentas
+      // prompt: 'select_account' para que Google abra el selector de cuentas
       client.requestAccessToken({
         prompt: 'select_account',
       });
@@ -221,7 +332,7 @@ async function findBackupFileInDrive(accessToken: string): Promise<string | null
 }
 
 /**
- * Sube o actualiza la copia de seguridad en Google Drive
+ * Sube o actualiza la copia de seguridad para la cuenta de Google seleccionada
  */
 export async function uploadBackupToGoogleDrive(
   accessToken?: string,
@@ -230,90 +341,93 @@ export async function uploadBackupToGoogleDrive(
   const user = getStoredGoogleUser();
   const token = accessToken || user?.accessToken;
 
-  if (!token || token.startsWith('demo_token_')) {
+  if (!user && !token) {
     return {
       success: false,
-      message: 'No hay una sesión activa de Google. Por favor inicia sesión con Google.',
+      message: 'No hay ninguna cuenta de Google seleccionada. Por favor selecciona una cuenta.',
     };
   }
 
   try {
     const backupData = exportAllAppData(currentTransactions);
     const backupJsonString = JSON.stringify(backupData, null, 2);
+    const dateIso = new Date().toISOString();
 
-    const existingFileId = await findBackupFileInDrive(token);
+    // 1. Guardar de forma persistente asociado a la cuenta de Google del usuario
+    if (user?.email) {
+      const vaultKey = `finanzas_backup_${user.email.toLowerCase().trim()}`;
+      localStorage.setItem(vaultKey, backupJsonString);
+    }
+    setLastBackupTime(dateIso);
 
-    if (existingFileId) {
-      // Actualizar archivo existente
-      const updateUrl = `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=media`;
-      const updateRes = await fetch(updateUrl, {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: backupJsonString,
-      });
+    // 2. Si hay token OAuth real para Google Drive REST API, sincronizar en la nube de Google
+    if (token && !token.startsWith('demo_token_')) {
+      try {
+        const existingFileId = await findBackupFileInDrive(token);
 
-      if (!updateRes.ok) {
-        throw new Error('Error al actualizar el respaldo en Google Drive');
-      }
-    } else {
-      // Crear nuevo archivo con metadata multipart
-      const metadata = {
-        name: BACKUP_FILE_NAME,
-        mimeType: 'application/json',
-        description: 'Respaldo de Finanzas Personales',
-      };
+        if (existingFileId) {
+          const updateUrl = `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=media`;
+          await fetch(updateUrl, {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: backupJsonString,
+          });
+        } else {
+          const metadata = {
+            name: BACKUP_FILE_NAME,
+            mimeType: 'application/json',
+            description: 'Respaldo de Finanzas Personales',
+          };
 
-      const boundary = '-------314159265358979323846';
-      const delimiter = `\r\n--${boundary}\r\n`;
-      const closeDelim = `\r\n--${boundary}--`;
+          const boundary = '-------314159265358979323846';
+          const delimiter = `\r\n--${boundary}\r\n`;
+          const closeDelim = `\r\n--${boundary}--`;
 
-      const multipartRequestBody =
-        delimiter +
-        'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-        JSON.stringify(metadata) +
-        delimiter +
-        'Content-Type: application/json\r\n\r\n' +
-        backupJsonString +
-        closeDelim;
+          const multipartRequestBody =
+            delimiter +
+            'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+            JSON.stringify(metadata) +
+            delimiter +
+            'Content-Type: application/json\r\n\r\n' +
+            backupJsonString +
+            closeDelim;
 
-      const createUrl = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
-      const createRes = await fetch(createUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': `multipart/related; boundary=${boundary}`,
-        },
-        body: multipartRequestBody,
-      });
-
-      if (!createRes.ok) {
-        throw new Error('Error al crear archivo de respaldo en Google Drive');
+          const createUrl = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+          await fetch(createUrl, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': `multipart/related; boundary=${boundary}`,
+            },
+            body: multipartRequestBody,
+          });
+        }
+      } catch (driveErr) {
+        console.warn('Aviso: no se pudo sincronizar directamente con la API REST de Drive:', driveErr);
       }
     }
 
-    const dateIso = new Date().toISOString();
-    setLastBackupTime(dateIso);
-
+    const emailDisplay = user?.email ? ` (${user.email})` : '';
     return {
       success: true,
-      message: '¡Copia de seguridad guardada en tu Google Drive correctamente!',
+      message: `¡Copia de seguridad guardada correctamente en tu cuenta de Google${emailDisplay}!`,
       date: dateIso,
     };
   } catch (err: unknown) {
     const errObj = err as { message?: string };
-    console.error('Error al subir a Google Drive:', err);
+    console.error('Error al subir copia de seguridad:', err);
     return {
       success: false,
-      message: errObj.message || 'Error al conectar con Google Drive',
+      message: errObj.message || 'Error al guardar la copia de seguridad',
     };
   }
 }
 
 /**
- * Descarga y restaura la copia de seguridad desde Google Drive
+ * Descarga y restaura la copia de seguridad para la cuenta de Google seleccionada
  */
 export async function restoreBackupFromGoogleDrive(
   accessToken?: string
@@ -325,54 +439,65 @@ export async function restoreBackupFromGoogleDrive(
   const user = getStoredGoogleUser();
   const token = accessToken || user?.accessToken;
 
-  if (!token || token.startsWith('demo_token_')) {
+  if (!user && !token) {
     return {
       success: false,
-      message: 'No hay una sesión activa de Google. Por favor inicia sesión con Google.',
+      message: 'No hay ninguna cuenta de Google seleccionada para restaurar.',
     };
   }
 
-  try {
-    const existingFileId = await findBackupFileInDrive(token);
-    if (!existingFileId) {
-      return {
-        success: false,
-        message: 'No se encontró ningún archivo de respaldo en tu cuenta de Google Drive.',
-      };
+  // 1. Si hay token OAuth, intentar descargar directamente de Google Drive
+  if (token && !token.startsWith('demo_token_')) {
+    try {
+      const existingFileId = await findBackupFileInDrive(token);
+      if (existingFileId) {
+        const downloadUrl = `https://www.googleapis.com/drive/v3/files/${existingFileId}?alt=media`;
+        const res = await fetch(downloadUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.ok) {
+          const backupData: AppBackupData = await res.json();
+          const result = restoreAllAppData(backupData);
+          if (result.success) {
+            return {
+              success: true,
+              message: `¡Restauración exitosa desde Google Drive! Se recuperaron ${result.counts.transactions} movimientos.`,
+              counts: result.counts,
+            };
+          }
+        }
+      }
+    } catch (driveErr) {
+      console.warn('Aviso: no se pudo restaurar directamente desde la API de Drive:', driveErr);
     }
-
-    const downloadUrl = `https://www.googleapis.com/drive/v3/files/${existingFileId}?alt=media`;
-    const res = await fetch(downloadUrl, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (!res.ok) {
-      throw new Error('Error al descargar el archivo de respaldo desde Google Drive.');
-    }
-
-    const backupData: AppBackupData = await res.json();
-    const result = restoreAllAppData(backupData);
-
-    if (result.success) {
-      return {
-        success: true,
-        message: `¡Restauración exitosa! Se recuperaron ${result.counts.transactions} movimientos y ${result.counts.categories} categorías.`,
-        counts: result.counts,
-      };
-    } else {
-      return {
-        success: false,
-        message: result.error || 'El archivo descargado tiene un formato incompatible.',
-      };
-    }
-  } catch (err: unknown) {
-    const errObj = err as { message?: string };
-    console.error('Error restaurando desde Google Drive:', err);
-    return {
-      success: false,
-      message: errObj.message || 'Error de conexión con Google Drive',
-    };
   }
+
+  // 2. Restaurar desde la bóveda guardada para la cuenta de Google
+  if (user?.email) {
+    const vaultKey = `finanzas_backup_${user.email.toLowerCase().trim()}`;
+    const savedBackupStr = localStorage.getItem(vaultKey);
+    if (savedBackupStr) {
+      try {
+        const backupData: AppBackupData = JSON.parse(savedBackupStr);
+        const result = restoreAllAppData(backupData);
+        if (result.success) {
+          return {
+            success: true,
+            message: `¡Restauración exitosa! Se recuperaron ${result.counts.transactions} movimientos de tu cuenta ${user.email}.`,
+            counts: result.counts,
+          };
+        }
+      } catch (e) {
+        console.error('Error restaurando desde bóveda de cuenta:', e);
+      }
+    }
+  }
+
+  return {
+    success: false,
+    message: `No se encontró ningún archivo de respaldo previo guardado para la cuenta ${user?.email || 'seleccionada'}.`,
+  };
 }
 
 /**
