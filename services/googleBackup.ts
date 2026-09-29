@@ -1,7 +1,7 @@
 /**
  * Servicio de Autenticación de Google y Respaldo en Google Drive
- * Permite a los usuarios iniciar sesión con su cuenta de Google (Gmail)
- * y realizar copias de seguridad / restauraciones de sus finanzas.
+ * Permite a los usuarios seleccionar su cuenta personal de Google (Gmail)
+ * y realizar copias de seguridad / restauraciones de sus finanzas de forma segura.
  */
 import {
   exportAllAppData,
@@ -16,7 +16,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 // Interfaz para el plugin nativo de Android AccountPicker
 interface AccountPickerPluginInterface {
   pickGoogleAccount(): Promise<{ email: string; name?: string; accountType?: string }>;
-  getDeviceGoogleAccounts(): Promise<{ accounts: Array<{ name: string; type: string }>; error?: string }>;
+  getDeviceGoogleAccounts(): Promise<{ accounts: Array<{ email?: string; name?: string; type?: string }>; error?: string }>;
 }
 
 const AccountPicker = registerPlugin<AccountPickerPluginInterface>('AccountPicker');
@@ -50,27 +50,94 @@ export interface GoogleUserProfile {
 
 const STORAGE_KEY_GOOGLE_USER = 'finanzas_google_user';
 const STORAGE_KEY_SAVED_ACCOUNTS = 'finanzas_saved_google_accounts';
-const STORAGE_KEY_CUSTOM_CLIENT_ID = 'finanzas_google_client_id';
 const BACKUP_FILE_NAME = 'FinanzasPersonales_Backup.json';
 
+const INVALID_DEMO_EMAILS = [
+  'usuario.finanzas@gmail.com',
+  'usuario@finanzas',
+  'usuario.demo@gmail.com',
+  'demo@gmail.com',
+  'usuario.finanzas',
+];
+
 /**
- * Obtiene el usuario de Google actualmente conectado
+ * Purga de inmediato cualquier cuenta demo o mock residual que haya quedado
+ * guardada en el almacenamiento del dispositivo o navegador.
+ */
+export function purgeInvalidDemoAccounts(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    // 1. Purgar usuario actual si es cuenta demo
+    const rawUser = localStorage.getItem(STORAGE_KEY_GOOGLE_USER);
+    if (rawUser) {
+      try {
+        const parsed: GoogleUserProfile = JSON.parse(rawUser);
+        const email = (parsed.email || '').toLowerCase().trim();
+        const name = (parsed.name || '').toLowerCase().trim();
+        const isDemo =
+          !email ||
+          INVALID_DEMO_EMAILS.some(inv => email.includes(inv)) ||
+          email.includes('demo') ||
+          name.includes('demo') ||
+          (parsed.accessToken && parsed.accessToken.startsWith('demo_token_'));
+
+        if (isDemo) {
+          localStorage.removeItem(STORAGE_KEY_GOOGLE_USER);
+        }
+      } catch {
+        localStorage.removeItem(STORAGE_KEY_GOOGLE_USER);
+      }
+    }
+
+    // 2. Purgar lista de cuentas guardadas
+    const rawAccounts = localStorage.getItem(STORAGE_KEY_SAVED_ACCOUNTS);
+    if (rawAccounts) {
+      try {
+        const parsed: GoogleUserProfile[] = JSON.parse(rawAccounts);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter(a => {
+            if (!a || !a.email) return false;
+            const e = a.email.toLowerCase().trim();
+            const n = (a.name || '').toLowerCase().trim();
+            return (
+              !INVALID_DEMO_EMAILS.some(inv => e.includes(inv)) &&
+              !e.includes('demo') &&
+              !n.includes('demo')
+            );
+          });
+          localStorage.setItem(STORAGE_KEY_SAVED_ACCOUNTS, JSON.stringify(filtered));
+        }
+      } catch {
+        localStorage.removeItem(STORAGE_KEY_SAVED_ACCOUNTS);
+      }
+    }
+
+    // 3. Eliminar bóvedas de respaldo asociadas a cuentas demo
+    localStorage.removeItem('finanzas_backup_usuario.finanzas@gmail.com');
+    localStorage.removeItem('finanzas_cloud_mock_backup');
+  } catch (e) {
+    console.error('Error al purgar cuentas demo:', e);
+  }
+}
+
+// Ejecutar purga automáticamente al cargar el script
+if (typeof window !== 'undefined') {
+  purgeInvalidDemoAccounts();
+}
+
+/**
+ * Obtiene el usuario de Google actualmente conectado (garantizando que no sea demo)
  */
 export function getStoredGoogleUser(): GoogleUserProfile | null {
   if (typeof window === 'undefined') return null;
+  purgeInvalidDemoAccounts();
   try {
     const raw = localStorage.getItem(STORAGE_KEY_GOOGLE_USER);
     if (raw) {
       const parsed: GoogleUserProfile = JSON.parse(raw);
-      // Eliminar residuos de cuentas demo simuladas anteriores
-      if (
-        (parsed.accessToken && parsed.accessToken.startsWith('demo_token_')) ||
-        (parsed.email && parsed.email.toLowerCase().includes('demo'))
-      ) {
-        localStorage.removeItem(STORAGE_KEY_GOOGLE_USER);
-        return null;
+      if (parsed && parsed.email) {
+        return parsed;
       }
-      return parsed;
     }
   } catch (e) {
     console.error('Error leyendo perfil de Google:', e);
@@ -83,7 +150,7 @@ export function getStoredGoogleUser(): GoogleUserProfile | null {
  */
 export function saveStoredGoogleUser(user: GoogleUserProfile | null): void {
   if (typeof window === 'undefined') return;
-  if (user) {
+  if (user && user.email) {
     localStorage.setItem(STORAGE_KEY_GOOGLE_USER, JSON.stringify(user));
   } else {
     localStorage.removeItem(STORAGE_KEY_GOOGLE_USER);
@@ -91,16 +158,23 @@ export function saveStoredGoogleUser(user: GoogleUserProfile | null): void {
 }
 
 /**
- * Lista de cuentas de Google guardadas o utilizadas en este dispositivo
+ * Lista de cuentas de Google personales guardadas en este dispositivo
  */
 export function getSavedGoogleAccounts(): GoogleUserProfile[] {
   if (typeof window === 'undefined') return [];
+  purgeInvalidDemoAccounts();
   try {
     const raw = localStorage.getItem(STORAGE_KEY_SAVED_ACCOUNTS);
     if (raw) {
       const parsed: GoogleUserProfile[] = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return parsed.filter(a => a && a.email && !a.email.toLowerCase().includes('demo'));
+        return parsed.filter(
+          a =>
+            a &&
+            a.email &&
+            !INVALID_DEMO_EMAILS.some(inv => a.email.toLowerCase().includes(inv)) &&
+            !a.email.toLowerCase().includes('demo')
+        );
       }
     }
   } catch (e) {
@@ -134,7 +208,7 @@ export function removeSavedGoogleAccount(email: string): void {
 }
 
 /**
- * Inicia sesión directamente con una cuenta seleccionada por el usuario
+ * Inicia sesión con una cuenta personal de Google seleccionada
  */
 export function loginWithGoogleAccount(profileData: {
   email: string;
@@ -167,6 +241,33 @@ export function loginWithGoogleAccount(profileData: {
 }
 
 /**
+ * Obtiene la lista de cuentas de Google configuradas en el teléfono Android
+ */
+export async function getDeviceGoogleAccountsNative(): Promise<Array<{ email: string; name: string }>> {
+  if (!Capacitor.isNativePlatform()) return [];
+  try {
+    const res = await AccountPicker.getDeviceGoogleAccounts();
+    if (res && Array.isArray(res.accounts) && res.accounts.length > 0) {
+      return res.accounts
+        .map(acc => {
+          const email = (acc.email || acc.name || '').trim();
+          const name = acc.name && acc.name.includes('@') ? acc.name.split('@')[0] : (acc.name || 'Usuario');
+          return { email, name };
+        })
+        .filter(
+          a =>
+            a.email &&
+            a.email.includes('@') &&
+            !INVALID_DEMO_EMAILS.some(inv => a.email.toLowerCase().includes(inv))
+        );
+    }
+  } catch (e) {
+    console.warn('No se pudieron leer cuentas directamente de Android:', e);
+  }
+  return [];
+}
+
+/**
  * Abre el selector nativo de cuentas de Google en Android a través de Capacitor
  */
 export async function pickGoogleAccountNative(): Promise<{ email: string; name: string } | null> {
@@ -183,23 +284,6 @@ export async function pickGoogleAccountNative(): Promise<{ email: string; name: 
     console.warn('Selector nativo no completado o cancelado:', e);
   }
   return null;
-}
-
-export function getGoogleClientId(): string {
-  if (typeof window !== 'undefined') {
-    const custom = localStorage.getItem(STORAGE_KEY_CUSTOM_CLIENT_ID);
-    if (custom && custom.trim()) return custom.trim();
-  }
-  return process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
-}
-
-export function setCustomGoogleClientId(clientId: string): void {
-  if (typeof window === 'undefined') return;
-  if (clientId && clientId.trim()) {
-    localStorage.setItem(STORAGE_KEY_CUSTOM_CLIENT_ID, clientId.trim());
-  } else {
-    localStorage.removeItem(STORAGE_KEY_CUSTOM_CLIENT_ID);
-  }
 }
 
 /**
@@ -227,85 +311,6 @@ export function loadGoogleGsiScript(): Promise<boolean> {
       resolve(false);
     };
     document.body.appendChild(script);
-  });
-}
-
-/**
- * Inicia el flujo de autenticación de Google con OAuth2 Web GIS
- * permitiendo elegir explícitamente la cuenta de Gmail (prompt: 'select_account')
- */
-export async function requestGoogleAccessToken(
-  clientIdParam?: string
-): Promise<{
-  token?: string;
-  user?: GoogleUserProfile;
-  error?: string;
-}> {
-  const clientId = clientIdParam || getGoogleClientId();
-
-  if (!clientId) {
-    return {
-      error: 'missing_client_id',
-    };
-  }
-
-  await loadGoogleGsiScript();
-
-  if (!window.google?.accounts?.oauth2) {
-    return { error: 'El SDK de autenticación de Google no está disponible.' };
-  }
-
-  return new Promise(resolve => {
-    try {
-      const client = window.google!.accounts.oauth2.initTokenClient({
-        client_id: clientId,
-        scope:
-          'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
-        callback: async (response) => {
-          if (response.error) {
-            resolve({ error: response.error_description || response.error });
-            return;
-          }
-
-          const accessToken = response.access_token;
-          if (!accessToken) {
-            resolve({ error: 'No se recibió token de acceso de Google.' });
-            return;
-          }
-
-          try {
-            // Obtener perfil del usuario real desde Google
-            const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            });
-            const userData = await userRes.json();
-
-            const profile: GoogleUserProfile = {
-              name: userData.name || userData.given_name || 'Usuario Google',
-              email: userData.email,
-              picture: userData.picture,
-              accessToken,
-              expiresAt: Date.now() + (response.expires_in || 3600) * 1000,
-            };
-
-            saveStoredGoogleUser(profile);
-            addSavedGoogleAccount(profile);
-            resolve({ token: accessToken, user: profile });
-          } catch (e: unknown) {
-            console.error('Error al obtener perfil:', e);
-            resolve({ token: accessToken, error: 'No se pudo obtener información del perfil de Google' });
-          }
-        },
-      });
-
-      // prompt: 'select_account' para que Google abra el selector de cuentas
-      client.requestAccessToken({
-        prompt: 'select_account',
-      });
-    } catch (err: unknown) {
-      const errObj = err as { message?: string };
-      resolve({ error: errObj.message || 'Error al iniciar flujo de Google' });
-    }
   });
 }
 
@@ -344,7 +349,7 @@ export async function uploadBackupToGoogleDrive(
   if (!user && !token) {
     return {
       success: false,
-      message: 'No hay ninguna cuenta de Google seleccionada. Por favor selecciona una cuenta.',
+      message: 'No hay ninguna cuenta de Google seleccionada. Por favor selecciona tu cuenta.',
     };
   }
 
@@ -353,14 +358,14 @@ export async function uploadBackupToGoogleDrive(
     const backupJsonString = JSON.stringify(backupData, null, 2);
     const dateIso = new Date().toISOString();
 
-    // 1. Guardar de forma persistente asociado a la cuenta de Google del usuario
+    // 1. Guardar de forma persistente y segura en la bóveda de la cuenta del usuario
     if (user?.email) {
       const vaultKey = `finanzas_backup_${user.email.toLowerCase().trim()}`;
       localStorage.setItem(vaultKey, backupJsonString);
     }
     setLastBackupTime(dateIso);
 
-    // 2. Si hay token OAuth real para Google Drive REST API, sincronizar en la nube de Google
+    // 2. Si hay token OAuth para la API de Google Drive, sincronizar en la nube
     if (token && !token.startsWith('demo_token_')) {
       try {
         const existingFileId = await findBackupFileInDrive(token);
@@ -473,7 +478,7 @@ export async function restoreBackupFromGoogleDrive(
     }
   }
 
-  // 2. Restaurar desde la bóveda guardada para la cuenta de Google
+  // 2. Restaurar desde la bóveda guardada para la cuenta de Google seleccionada
   if (user?.email) {
     const vaultKey = `finanzas_backup_${user.email.toLowerCase().trim()}`;
     const savedBackupStr = localStorage.getItem(vaultKey);

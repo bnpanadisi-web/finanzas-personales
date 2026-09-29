@@ -55,17 +55,21 @@ public class AccountPickerPlugin extends Plugin {
             AccountManager manager = AccountManager.get(getContext());
             Account[] accounts = manager.getAccountsByType("com.google");
             JSArray arr = new JSArray();
-            for (Account account : accounts) {
-                JSObject obj = new JSObject();
-                obj.put("name", account.name);
-                obj.put("type", account.type);
-                arr.put(obj);
+            if (accounts != null) {
+                for (Account account : accounts) {
+                    if (account.name != null && !account.name.trim().isEmpty()) {
+                        JSObject obj = new JSObject();
+                        obj.put("email", account.name.trim());
+                        String displayName = account.name.contains("@") ? account.name.split("@")[0] : account.name;
+                        obj.put("name", displayName);
+                        arr.put(obj);
+                    }
+                }
             }
             JSObject ret = new JSObject();
             ret.put("accounts", arr);
             call.resolve(ret);
         } catch (Exception e) {
-            // Si falta el permiso GET_ACCOUNTS en versiones antiguas, devolvemos array vacío
             JSObject ret = new JSObject();
             ret.put("accounts", new JSArray());
             ret.put("error", e.getMessage());
@@ -76,19 +80,18 @@ public class AccountPickerPlugin extends Plugin {
     @ActivityCallback
     private void chooseAccountResult(PluginCall call, ActivityResult result) {
         if (result == null) {
-            call.reject("Sin respuesta");
+            call.reject("Sin respuesta del sistema");
             return;
         }
 
         if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
             Intent data = result.getData();
             String accountName = data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME);
-            String accountType = data.getStringExtra(AccountManager.KEY_ACCOUNT_TYPE);
 
             if (accountName != null && !accountName.trim().isEmpty()) {
                 JSObject ret = new JSObject();
                 ret.put("email", accountName.trim());
-                String userName = accountName.split("@")[0];
+                String userName = accountName.contains("@") ? accountName.split("@")[0] : accountName;
                 ret.put("name", userName);
                 call.resolve(ret);
             } else {

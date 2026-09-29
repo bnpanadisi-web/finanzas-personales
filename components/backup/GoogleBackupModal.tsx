@@ -8,7 +8,6 @@ import {
   X,
   Upload,
   Download,
-  Settings,
   LogOut,
   Users,
   RefreshCw,
@@ -23,18 +22,17 @@ import {
   getSavedGoogleAccounts,
   loginWithGoogleAccount,
   pickGoogleAccountNative,
+  getDeviceGoogleAccountsNative,
   uploadBackupToGoogleDrive,
   restoreBackupFromGoogleDrive,
   downloadLocalBackupFile,
   restoreFromFile,
-  getGoogleClientId,
-  setCustomGoogleClientId,
   isAutoBackupEnabled,
   setAutoBackupEnabled,
   getAutoBackupFrequency,
   setAutoBackupFrequency,
   AutoBackupFrequency,
-  requestGoogleAccessToken,
+  purgeInvalidDemoAccounts,
 } from '@/services/googleBackup';
 import { getLastBackupTime } from '@/lib/localStorageEngine';
 import { Transaction } from '@/types';
@@ -55,13 +53,14 @@ export function GoogleBackupModal({
   onDataRestored,
   darkMode = false,
 }: GoogleBackupModalProps) {
-  const [googleUser, setGoogleUser] = useState<GoogleUserProfile | null>(() => getStoredGoogleUser());
+  const [googleUser, setGoogleUser] = useState<GoogleUserProfile | null>(() => {
+    purgeInvalidDemoAccounts();
+    return getStoredGoogleUser();
+  });
   const [lastBackup, setLastBackup] = useState<string | null>(() => getLastBackupTime());
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
-  const [showConfig, setShowConfig] = useState(false);
   const [showAccountChooser, setShowAccountChooser] = useState(false);
   const [newEmailInput, setNewEmailInput] = useState('');
-  const [customClientId, setCustomClientId] = useState(() => getGoogleClientId());
   const [autoBackup, setAutoBackup] = useState<boolean>(() => isAutoBackupEnabled());
   const [frequency, setFrequency] = useState<AutoBackupFrequency>(() => getAutoBackupFrequency());
   const [savedAccounts, setSavedAccounts] = useState<GoogleUserProfile[]>(() => getSavedGoogleAccounts());
@@ -72,10 +71,12 @@ export function GoogleBackupModal({
   useEffect(() => {
     if (!isOpen) return;
 
+    // Purgar de forma estricta cualquier usuario demo residual
+    purgeInvalidDemoAccounts();
+
     const timer = setTimeout(() => {
       setGoogleUser(getStoredGoogleUser());
       setLastBackup(getLastBackupTime());
-      setCustomClientId(getGoogleClientId());
       setAutoBackup(isAutoBackupEnabled());
       setFrequency(getAutoBackupFrequency());
       setSavedAccounts(getSavedGoogleAccounts());
@@ -101,9 +102,9 @@ export function GoogleBackupModal({
     success('Frecuencia de sincronización actualizada.');
   };
 
-  // Función principal para iniciar sesión con una cuenta de Google y subir el respaldo de inmediato
+  // Función para vincular la cuenta seleccionada y realizar de inmediato la copia de seguridad
   const handleSelectAccountAndBackup = async (account: { email: string; name?: string }) => {
-    if (!account.email || !account.email.trim()) {
+    if (!account.email || !account.email.trim() || !account.email.includes('@')) {
       error('Por favor ingresa un correo de Google válido.');
       return;
     }
@@ -117,7 +118,7 @@ export function GoogleBackupModal({
       setShowAccountChooser(false);
       setNewEmailInput('');
 
-      // 2. Realizar la copia de seguridad de inmediato en dicha cuenta
+      // 2. Realizar de inmediato el respaldo de la información en dicha cuenta
       setLoadingAction('backup');
       const uploadRes = await uploadBackupToGoogleDrive(undefined, transacciones);
       if (uploadRes.success) {
@@ -134,50 +135,40 @@ export function GoogleBackupModal({
     }
   };
 
-  // Iniciar flujo de selección de cuenta de Google
+  // Iniciar flujo de búsqueda y selección de cuentas de Google configuradas en el teléfono
   const handleTriggerGoogleSignIn = async () => {
-    // Si estamos en Android nativo (Capacitor), abrir el selector nativo del teléfono
-    if (Capacitor.isNativePlatform()) {
-      setLoadingAction('login');
-      try {
-        const nativeAccount = await pickGoogleAccountNative();
-        if (nativeAccount && nativeAccount.email) {
-          await handleSelectAccountAndBackup(nativeAccount);
-          return;
-        }
-      } catch (e) {
-        console.warn('Selector nativo no disponible o cancelado:', e);
-      } finally {
-        setLoadingAction(null);
-      }
-    }
-
-    // Si hay un Client ID de Google OAuth Web configurado, intentar GIS
-    const clientId = customClientId || getGoogleClientId();
-    if (clientId) {
-      setLoadingAction('login');
-      try {
-        const res = await requestGoogleAccessToken(clientId);
-        if (res.user && res.token) {
-          await handleSelectAccountAndBackup({
-            email: res.user.email,
-            name: res.user.name,
+    setLoadingAction('login');
+    try {
+      // Si estamos en un dispositivo Android nativo con Capacitor:
+      if (Capacitor.isNativePlatform()) {
+        // 1. Consultar las cuentas registradas en el sistema Android
+        const deviceAccounts = await getDeviceGoogleAccountsNative();
+        if (deviceAccounts.length > 0) {
+          deviceAccounts.forEach(acc => {
+            loginWithGoogleAccount({ email: acc.email, name: acc.name });
           });
+          setSavedAccounts(getSavedGoogleAccounts());
+        }
+
+        // 2. Abrir el selector nativo del sistema Android
+        const nativeSelected = await pickGoogleAccountNative();
+        if (nativeSelected && nativeSelected.email) {
+          await handleSelectAccountAndBackup(nativeSelected);
           return;
         }
-      } catch (e) {
-        console.warn('Error en Google GIS:', e);
-      } finally {
-        setLoadingAction(null);
       }
+    } catch (e) {
+      console.warn('Selector nativo no completado:', e);
+    } finally {
+      setLoadingAction(null);
     }
 
-    // En navegador o si se cancela el selector nativo, abrir el modal de selección de cuentas
+    // Si estamos en navegador web o si se desea elegir de la lista desplegable:
     setSavedAccounts(getSavedGoogleAccounts());
     setShowAccountChooser(true);
   };
 
-  // Cerrar sesión de Google
+  // Cerrar sesión de la cuenta de Google activa
   const handleGoogleLogout = () => {
     saveStoredGoogleUser(null);
     setGoogleUser(null);
@@ -187,7 +178,7 @@ export function GoogleBackupModal({
     }
   };
 
-  // Guardar en Google Drive / Cuenta activa
+  // Subir copia a la cuenta activa
   const handleBackupToDrive = async () => {
     setLoadingAction('backup');
     try {
@@ -206,9 +197,9 @@ export function GoogleBackupModal({
     }
   };
 
-  // Restaurar desde Google Drive / Cuenta activa
+  // Restaurar copia desde la cuenta activa
   const handleRestoreFromDrive = async () => {
-    const cuentaEmail = googleUser?.email || 'tu cuenta';
+    const cuentaEmail = googleUser?.email || 'tu cuenta de Google';
     const confirmacion = window.confirm(
       `¿Deseas restaurar la información de la cuenta "${cuentaEmail}"? Los datos actuales del dispositivo se actualizarán con la copia guardada.`
     );
@@ -281,13 +272,6 @@ export function GoogleBackupModal({
     }
   };
 
-  const handleSaveClientId = (e: React.FormEvent) => {
-    e.preventDefault();
-    setCustomGoogleClientId(customClientId);
-    success('Google Client ID actualizado.');
-    setShowConfig(false);
-  };
-
   const formatFechaBackup = (iso: string | null) => {
     if (!iso) return 'Ninguna copia registrada';
     try {
@@ -328,71 +312,22 @@ export function GoogleBackupModal({
             <div>
               <h2 className="text-lg font-black tracking-tight">Copia de Seguridad</h2>
               <p className="text-xs text-slate-400">
-                Almacenamiento local + Nube personal en Google
+                Almacenamiento local + Respaldo en tu cuenta de Google
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowConfig(!showConfig)}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer"
-              title="Configuración avanzada"
-            >
-              <Settings size={18} />
-            </button>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer"
-              aria-label="Cerrar"
-            >
-              <X size={18} />
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer"
+            aria-label="Cerrar"
+          >
+            <X size={18} />
+          </button>
         </div>
 
         {/* Cuerpo del Modal */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-5 text-sm">
-          {/* Panel de Configuración de Google Client ID (Opcional / Avanzado) */}
-          {showConfig && (
-            <form
-              onSubmit={handleSaveClientId}
-              className={`p-4 rounded-2xl border space-y-3 animate-in fade-in duration-150 ${sectionBg}`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold flex items-center gap-1.5 text-slate-200">
-                  <Settings size={14} className="text-sky-400" />
-                  Google Cloud Client ID (OAuth 2.0 opcional)
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowConfig(false)}
-                  className="text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer"
-                >
-                  Cerrar
-                </button>
-              </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                Si deseas sincronización directa con la API REST de Google Drive, ingresa tu Client ID de Google Cloud. De lo contrario, la app utiliza el selector de cuentas del teléfono para respaldar los datos.
-              </p>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Ej: 123456789-xxxx.apps.googleusercontent.com"
-                  value={customClientId}
-                  onChange={e => setCustomClientId(e.target.value)}
-                  className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-700 bg-slate-900 text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
-                />
-                <button
-                  type="submit"
-                  className="px-3 py-2 bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer shrink-0"
-                >
-                  Guardar
-                </button>
-              </div>
-            </form>
-          )}
-
           {/* Sección 1: Estado de Cuenta Google */}
           <div className={`p-4 rounded-2xl border ${sectionBg} space-y-3`}>
             {googleUser ? (
@@ -417,7 +352,7 @@ export function GoogleBackupModal({
                         <p className="text-xs font-bold text-slate-100 truncate">{googleUser.name}</p>
                         <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0 flex items-center gap-1">
                           <CheckCircle2 size={10} />
-                          Cuenta vinculada
+                          Copia de seguridad vinculada
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-300 font-medium truncate">{googleUser.email}</p>
@@ -470,7 +405,7 @@ export function GoogleBackupModal({
                 <div>
                   <p className="text-xs font-bold text-slate-100">Cuenta de Google</p>
                   <p className="text-[11px] text-slate-400">
-                    Elige la cuenta de Google de tu teléfono donde deseas respaldar tus datos.
+                    Conecta tu cuenta de Google personal para respaldar tus datos de forma segura.
                   </p>
                 </div>
 
@@ -497,12 +432,12 @@ export function GoogleBackupModal({
                       d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.04 3.15c.95-2.83 3.59-4.98 6.71-4.98z"
                     />
                   </svg>
-                  <span>{loadingAction === 'login' ? 'Conectando...' : 'Ingresar con Google'}</span>
+                  <span>{loadingAction === 'login' ? 'Buscando cuentas...' : 'Conectar con Google'}</span>
                 </button>
               </div>
             )}
 
-            {/* Selector interactivo de cuentas de Google (cuando se solicita elegir cuenta) */}
+            {/* Selector de cuentas de Google (cuentas del teléfono y opción de escribir Gmail personal) */}
             {showAccountChooser && (
               <div className="mt-3 p-4 rounded-2xl border border-sky-500/30 bg-slate-900 shadow-xl space-y-3 animate-in fade-in duration-200">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-800">
@@ -513,7 +448,7 @@ export function GoogleBackupModal({
                       <path fill="#FBBC05" d="M5.29 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.04-3.15z" />
                       <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.04 3.15c.95-2.83 3.59-4.98 6.71-4.98z" />
                     </svg>
-                    <span className="text-xs font-bold text-white">Elige una cuenta de Google</span>
+                    <span className="text-xs font-bold text-white">Elige tu cuenta de Google</span>
                   </div>
                   <button
                     onClick={() => setShowAccountChooser(false)}
@@ -524,55 +459,57 @@ export function GoogleBackupModal({
                 </div>
 
                 <p className="text-[11px] text-slate-400">
-                  Selecciona la cuenta donde se guardará tu copia de seguridad:
+                  Selecciona la cuenta de tu preferencia donde se guardará tu copia de seguridad:
                 </p>
 
-                {/* Lista de cuentas registradas / guardadas */}
-                <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                  {savedAccounts.map((acc) => (
-                    <button
-                      key={acc.email}
-                      onClick={() => handleSelectAccountAndBackup(acc)}
-                      disabled={loadingAction === 'login' || loadingAction === 'backup'}
-                      className="w-full p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-left flex items-center justify-between gap-3 transition-colors cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        {acc.picture ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={acc.picture}
-                            alt={acc.name}
-                            className="w-8 h-8 rounded-full border border-sky-500/30 object-cover shrink-0"
-                          />
-                        ) : (
-                          <div className="w-8 h-8 rounded-full bg-sky-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
-                            {acc.name.charAt(0).toUpperCase()}
+                {/* Lista de cuentas encontradas */}
+                {savedAccounts.length > 0 && (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {savedAccounts.map((acc) => (
+                      <button
+                        key={acc.email}
+                        onClick={() => handleSelectAccountAndBackup(acc)}
+                        disabled={loadingAction === 'login' || loadingAction === 'backup'}
+                        className="w-full p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-left flex items-center justify-between gap-3 transition-colors cursor-pointer group"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {acc.picture ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={acc.picture}
+                              alt={acc.name}
+                              className="w-8 h-8 rounded-full border border-sky-500/30 object-cover shrink-0"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-sky-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                              {acc.name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-white truncate">{acc.name}</p>
+                            <p className="text-[11px] text-slate-400 truncate">{acc.email}</p>
                           </div>
-                        )}
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-white truncate">{acc.name}</p>
-                          <p className="text-[11px] text-slate-400 truncate">{acc.email}</p>
                         </div>
-                      </div>
-                      {googleUser?.email.toLowerCase() === acc.email.toLowerCase() && (
-                        <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full shrink-0">
-                          Activa
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </div>
+                        {googleUser?.email.toLowerCase() === acc.email.toLowerCase() && (
+                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full shrink-0">
+                            Activa
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
-                {/* Opción de ingresar otra cuenta de Gmail */}
+                {/* Opción de ingresar tu cuenta personal de Gmail */}
                 <div className="pt-2 border-t border-slate-800 space-y-2">
                   <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
                     <Plus size={12} className="text-sky-400" />
-                    Ingresar otra cuenta de Gmail:
+                    Ingresar tu cuenta personal de Gmail:
                   </span>
                   <div className="flex gap-2">
                     <input
                       type="email"
-                      placeholder="ejemplo@gmail.com"
+                      placeholder="tu_correo@gmail.com"
                       value={newEmailInput}
                       onChange={(e) => setNewEmailInput(e.target.value)}
                       onKeyDown={(e) => {
@@ -591,13 +528,13 @@ export function GoogleBackupModal({
                         if (newEmailInput.trim()) {
                           handleSelectAccountAndBackup({ email: newEmailInput.trim() });
                         } else {
-                          error('Ingresa tu dirección de correo de Google.');
+                          error('Ingresa tu dirección de correo de Gmail.');
                         }
                       }}
                       disabled={!newEmailInput.trim() || loadingAction === 'login' || loadingAction === 'backup'}
                       className="px-3 py-2 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shrink-0"
                     >
-                      Elegir y Respaldar
+                      Seleccionar y Respaldar
                     </button>
                   </div>
                 </div>
