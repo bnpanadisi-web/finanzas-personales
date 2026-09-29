@@ -314,6 +314,75 @@ export function loadGoogleGsiScript(): Promise<boolean> {
   });
 }
 
+export function getGoogleClientId(): string {
+  return process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+}
+
+/**
+ * Inicia el flujo oficial de OAuth 2.0 de Google solicitando permisos para Google Drive
+ */
+export async function requestGoogleAccessToken(): Promise<{
+  token?: string;
+  user?: GoogleUserProfile;
+  error?: string;
+}> {
+  const clientId = getGoogleClientId();
+  if (!clientId) {
+    return { error: 'missing_client_id' };
+  }
+
+  await loadGoogleGsiScript();
+  if (!window.google?.accounts?.oauth2) {
+    return { error: 'El servicio de Google no está disponible en este momento.' };
+  }
+
+  return new Promise(resolve => {
+    try {
+      const client = window.google!.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope:
+          'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+        callback: async (response) => {
+          if (response.error) {
+            resolve({ error: response.error_description || response.error });
+            return;
+          }
+
+          const accessToken = response.access_token;
+          if (!accessToken) {
+            resolve({ error: 'No se recibió autorización de Google.' });
+            return;
+          }
+
+          try {
+            const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            const userData = await userRes.json();
+
+            const profile = loginWithGoogleAccount({
+              email: userData.email,
+              name: userData.name || userData.given_name,
+              picture: userData.picture,
+              accessToken,
+            });
+
+            resolve({ token: accessToken, user: profile });
+          } catch (e: unknown) {
+            console.error('Error al obtener perfil:', e);
+            resolve({ token: accessToken, error: 'No se pudo obtener el perfil de Google' });
+          }
+        },
+      });
+
+      client.requestAccessToken({ prompt: 'select_account' });
+    } catch (err: unknown) {
+      const errObj = err as { message?: string };
+      resolve({ error: errObj.message || 'Error al iniciar conexión con Google' });
+    }
+  });
+}
+
 /**
  * Busca si ya existe un archivo de respaldo en Google Drive
  */

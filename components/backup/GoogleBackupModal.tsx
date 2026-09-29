@@ -33,6 +33,8 @@ import {
   setAutoBackupFrequency,
   AutoBackupFrequency,
   purgeInvalidDemoAccounts,
+  getGoogleClientId,
+  requestGoogleAccessToken,
 } from '@/services/googleBackup';
 import { getLastBackupTime } from '@/lib/localStorageEngine';
 import { Transaction } from '@/types';
@@ -135,13 +137,34 @@ export function GoogleBackupModal({
     }
   };
 
-  // Iniciar flujo de búsqueda y selección de cuentas de Google configuradas en el teléfono
+  // Iniciar flujo de búsqueda y selección de cuentas de Google configuradas en el teléfono o Google OAuth
   const handleTriggerGoogleSignIn = async () => {
     setLoadingAction('login');
     try {
-      // Si estamos en un dispositivo Android nativo con Capacitor:
+      // 1. Si está configurado Google OAuth (Client ID en variables de entorno), abrir la ventana oficial de Google
+      const clientId = getGoogleClientId();
+      if (clientId) {
+        const authRes = await requestGoogleAccessToken();
+        if (authRes.user) {
+          setGoogleUser(authRes.user);
+          setSavedAccounts(getSavedGoogleAccounts());
+          setLoadingAction('backup');
+          const uploadRes = await uploadBackupToGoogleDrive(authRes.token, transacciones);
+          if (uploadRes.success) {
+            success(`¡Copia de seguridad guardada directamente en tu Google Drive (${authRes.user.email})!`);
+            if (uploadRes.date) setLastBackup(uploadRes.date);
+          } else {
+            error(uploadRes.message);
+          }
+          return;
+        } else if (authRes.error && authRes.error !== 'missing_client_id') {
+          error('Error de autenticación con Google: ' + authRes.error);
+          return;
+        }
+      }
+
+      // 2. Si estamos en un dispositivo Android nativo con Capacitor:
       if (Capacitor.isNativePlatform()) {
-        // 1. Consultar las cuentas registradas en el sistema Android
         const deviceAccounts = await getDeviceGoogleAccountsNative();
         if (deviceAccounts.length > 0) {
           deviceAccounts.forEach(acc => {
@@ -150,7 +173,6 @@ export function GoogleBackupModal({
           setSavedAccounts(getSavedGoogleAccounts());
         }
 
-        // 2. Abrir el selector nativo del sistema Android
         const nativeSelected = await pickGoogleAccountNative();
         if (nativeSelected && nativeSelected.email) {
           await handleSelectAccountAndBackup(nativeSelected);
@@ -158,12 +180,12 @@ export function GoogleBackupModal({
         }
       }
     } catch (e) {
-      console.warn('Selector nativo no completado:', e);
+      console.warn('Selector de Google no completado:', e);
     } finally {
       setLoadingAction(null);
     }
 
-    // Si estamos en navegador web o si se desea elegir de la lista desplegable:
+    // 3. Si estamos en navegador web o fallback:
     setSavedAccounts(getSavedGoogleAccounts());
     setShowAccountChooser(true);
   };
