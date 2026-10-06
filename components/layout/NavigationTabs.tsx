@@ -5,6 +5,7 @@ import {
   History,
   Target,
   BarChart3,
+  CreditCard,
 } from 'lucide-react';
 import { TabType } from '@/types';
 import { PiggyBankIcon } from '@/components/ui/PiggyBankIcon';
@@ -39,6 +40,12 @@ export function NavigationTabs({
       icon: <History size={18} className="shrink-0" />,
     },
     {
+      id: 'cuotas',
+      labelMobile: 'Cuotas',
+      labelDesktop: 'Cuotas',
+      icon: <CreditCard size={18} className="shrink-0" />,
+    },
+    {
       id: 'presupuestos',
       labelMobile: 'Presupuestos',
       labelDesktop: 'Presupuestos',
@@ -65,7 +72,7 @@ export function NavigationTabs({
       }`}
       aria-label="Pestañas de navegación"
     >
-      <div className="grid grid-cols-5 gap-1 sm:flex sm:items-center sm:gap-2">
+      <div className="grid grid-cols-6 gap-1 sm:flex sm:items-center sm:gap-2">
         {tabs.map(t => {
           const isActive = activeTab === t.id;
           return (

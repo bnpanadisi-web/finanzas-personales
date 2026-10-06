@@ -1,11 +1,13 @@
 import { Capacitor } from '@capacitor/core';
-import { Category, Transaction, Budget, SavingsGoal } from '@/types';
+import { Category, Transaction, Budget, SavingsGoal, CreditCard, InstallmentPurchase } from '@/types';
 import { CATEGORIAS_POR_DEFECTO } from '@/services/categories';
 import { CUENTAS_INICIALES } from '@/hooks/useAccounts';
 
 const KEY_REGISTROS = 'finanzas_local_registros';
 const KEY_CATEGORIAS = 'finanzas_local_categorias';
 const KEY_CUENTAS = 'finanzas_local_cuentas';
+const KEY_TARJETAS = 'finanzas_credit_cards';
+const KEY_COMPRAS_CUOTAS = 'finanzas_installment_purchases';
 
 // Determina si debemos usar modo local:
 // 1. En la app nativa instalada en el celular (Capacitor Android): 100% LOCAL y OFFLINE.
@@ -211,6 +213,55 @@ export function saveLocalAccounts(cuentas: string[]): void {
 }
 
 // ----------------------------------------------------
+// TARJETAS DE CRÉDITO Y COMPRAS EN CUOTAS
+// ----------------------------------------------------
+export function getLocalCreditCards(): CreditCard[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(KEY_TARJETAS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error('Error leyendo tarjetas locales:', e);
+  }
+  return [];
+}
+
+export function saveLocalCreditCards(cards: CreditCard[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(KEY_TARJETAS, JSON.stringify(cards));
+  } catch (e) {
+    console.error('Error guardando tarjetas locales:', e);
+  }
+}
+
+export function getLocalInstallmentPurchases(): InstallmentPurchase[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(KEY_COMPRAS_CUOTAS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error('Error leyendo compras en cuotas locales:', e);
+  }
+  return [];
+}
+
+export function saveLocalInstallmentPurchases(purchases: InstallmentPurchase[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(KEY_COMPRAS_CUOTAS, JSON.stringify(purchases));
+  } catch (e) {
+    console.error('Error guardando compras en cuotas locales:', e);
+  }
+}
+
+// ----------------------------------------------------
 // COPIA DE SEGURIDAD GENERAL (PARA GOOGLE DRIVE / ARCHIVO)
 // ----------------------------------------------------
 export interface AppBackupData {
@@ -223,6 +274,8 @@ export interface AppBackupData {
     accounts: string[];
     budgets: Budget[];
     savingsGoals: SavingsGoal[];
+    creditCards?: CreditCard[];
+    installmentPurchases?: InstallmentPurchase[];
     settings?: {
       darkMode?: boolean;
       ocultarMontos?: boolean;
@@ -300,7 +353,11 @@ export function exportAllAppData(currentTransactions?: Transaction[]): AppBackup
     console.warn('Error leyendo metas de ahorro:', e);
   }
 
-  // 6. Preferencias
+  // 6. Tarjetas de crédito y compras en cuotas
+  const creditCards = getLocalCreditCards();
+  const installmentPurchases = getLocalInstallmentPurchases();
+
+  // 7. Preferencias
   const settings = {
     darkMode: localStorage.getItem('finanzas_dark') === 'true',
     ocultarMontos: localStorage.getItem('finanzas_privacidad') === 'true',
@@ -318,6 +375,8 @@ export function exportAllAppData(currentTransactions?: Transaction[]): AppBackup
       accounts,
       budgets,
       savingsGoals,
+      creditCards,
+      installmentPurchases,
       settings,
     },
   };
@@ -331,13 +390,15 @@ export function restoreAllAppData(backup: AppBackupData): {
     accounts: number;
     budgets: number;
     savingsGoals: number;
+    creditCards?: number;
+    installmentPurchases?: number;
   };
   error?: string;
 } {
   if (typeof window === 'undefined') {
     return {
       success: false,
-      counts: { transactions: 0, categories: 0, accounts: 0, budgets: 0, savingsGoals: 0 },
+      counts: { transactions: 0, categories: 0, accounts: 0, budgets: 0, savingsGoals: 0, creditCards: 0, installmentPurchases: 0 },
       error: 'No se puede restaurar fuera del navegador',
     };
   }
@@ -375,6 +436,16 @@ export function restoreAllAppData(backup: AppBackupData): {
       localStorage.setItem('finanzas_savings_goals', JSON.stringify(data.savingsGoals));
     }
 
+    // Restaurar tarjetas de crédito
+    if (Array.isArray(data.creditCards)) {
+      saveLocalCreditCards(data.creditCards);
+    }
+
+    // Restaurar compras en cuotas
+    if (Array.isArray(data.installmentPurchases)) {
+      saveLocalInstallmentPurchases(data.installmentPurchases);
+    }
+
     // Restaurar ajustes opcionales
     if (data.settings) {
       if (typeof data.settings.darkMode === 'boolean') {
@@ -401,13 +472,15 @@ export function restoreAllAppData(backup: AppBackupData): {
         accounts: Array.isArray(data.accounts) ? data.accounts.length : 0,
         budgets: Array.isArray(data.budgets) ? data.budgets.length : 0,
         savingsGoals: Array.isArray(data.savingsGoals) ? data.savingsGoals.length : 0,
+        creditCards: Array.isArray(data.creditCards) ? data.creditCards.length : 0,
+        installmentPurchases: Array.isArray(data.installmentPurchases) ? data.installmentPurchases.length : 0,
       },
     };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : 'Error desconocido al restaurar datos';
     return {
       success: false,
-      counts: { transactions: 0, categories: 0, accounts: 0, budgets: 0, savingsGoals: 0 },
+      counts: { transactions: 0, categories: 0, accounts: 0, budgets: 0, savingsGoals: 0, creditCards: 0, installmentPurchases: 0 },
       error: errorMsg,
     };
   }

@@ -14,6 +14,7 @@ import { TransactionList } from '@/components/transactions/TransactionList';
 import { SearchAndFilterBar } from '@/components/transactions/SearchAndFilterBar';
 import { BudgetsView } from '@/components/budgets/BudgetsView';
 import { SavingsView } from '@/components/savings/SavingsView';
+import { CardsView } from '@/components/cards/CardsView';
 import { CategoryModal } from '@/components/categories/CategoryModal';
 import { AccountModal } from '@/components/accounts/AccountModal';
 import { ExportModal } from '@/components/export/ExportModal';
@@ -468,6 +469,17 @@ function FinanzasAppContent() {
               darkMode={darkMode}
             />
           </div>
+        </div>
+      )}
+
+      {/* PESTAÑA: CUOTAS Y TARJETAS */}
+      {tab === 'cuotas' && (
+        <div className="animate-in fade-in duration-200">
+          <CardsView
+            categorias={categorias}
+            ocultarMontos={ocultarMontos}
+            darkMode={darkMode}
+          />
         </div>
       )}
 

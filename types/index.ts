@@ -89,4 +89,38 @@ export interface FilterOptions {
   anio: number;
 }
 
-export type TabType = 'actual' | 'historial' | 'presupuestos' | 'reservas' | 'analiticas';
+export type CardNetwork = 'visa' | 'mastercard' | 'amex' | 'cabal' | 'naranja' | 'otra';
+export type CardSkin = 'comun' | 'dorada' | 'platino' | 'black';
+
+export interface CreditCard {
+  id: string;
+  alias: string;
+  emisor?: string;
+  red: CardNetwork;
+  skin: CardSkin;
+  ultimosDigitos: string;
+  titular?: string;
+  vencimientoTarjeta?: string; // MM/YY
+  diaCierre?: number; // Día del mes (1-31)
+  diaVencimiento?: number; // Día del mes (1-31)
+  limiteARS?: number;
+  creadaEn?: string;
+}
+
+export interface InstallmentPurchase {
+  id: string;
+  tarjetaId: string;
+  descripcion: string;
+  montoTotal: number;
+  moneda: Currency;
+  cuotasTotales: number;
+  fechaCompra: string; // YYYY-MM-DD
+  mesPrimerCuota: string; // YYYY-MM (mes en que entra la cuota 1)
+  categoria?: string;
+  cuotasPagasManuales?: number;
+  estado: 'activa' | 'finalizada';
+  notas?: string;
+  creadaEn?: string;
+}
+
+export type TabType = 'actual' | 'historial' | 'presupuestos' | 'reservas' | 'cuotas' | 'analiticas';
