@@ -205,14 +205,29 @@ function InstallmentPurchaseModalForm({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-300">Cantidad de Cuotas</label>
-              <span className="text-xs font-extrabold text-sky-400">
-                {cuotasTotales} {cuotasTotales === 1 ? 'cuota' : 'cuotas'}
-              </span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={cuotasTotales}
+                  onChange={e => {
+                    const val = parseInt(e.target.value);
+                    if (!isNaN(val) && val >= 1) {
+                      setCuotasTotales(val);
+                    }
+                  }}
+                  className={`w-16 px-2 py-1 rounded-lg border text-xs font-extrabold text-sky-400 text-center focus:outline-none focus:border-sky-500 ${inputBg}`}
+                />
+                <span className="text-xs font-semibold text-slate-400">
+                  {cuotasTotales === 1 ? 'cuota' : 'cuotas'}
+                </span>
+              </div>
             </div>
 
             {/* Accesos rápidos de cuotas */}
-            <div className="grid grid-cols-7 gap-1.5">
-              {[1, 3, 6, 9, 12, 18, 24].map(q => (
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+              {[1, 2, 3, 6, 9, 12, 18, 24].map(q => (
                 <button
                   type="button"
                   key={q}
