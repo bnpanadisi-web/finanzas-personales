@@ -10,10 +10,12 @@ import {
   CheckCircle2,
   X,
   Check,
+  RefreshCw,
 } from 'lucide-react';
 import { Currency, SavingsGoal } from '@/types';
 import { PiggyBankIcon } from '@/components/ui/PiggyBankIcon';
 import { formatCurrency, formatInputNumber, parseCurrencyInput } from '@/lib/formatters';
+import { useToast } from '@/components/ui/Toast';
 
 interface SavingsViewProps {
   goals: SavingsGoal[];
@@ -28,6 +30,8 @@ interface SavingsViewProps {
   totalObjetivoUSD: number;
   ocultarMontos: boolean;
   darkMode: boolean;
+  onSincronizar?: () => Promise<void>;
+  sincronizando?: boolean;
 }
 
 const EMOJIS_PRESET = ['🐷', '🏖️', '✈️', '🚗', '🏠', '🛡️', '💻', '📱', '🎓', '💍', '🎁', '🚀', '🎸', '👟'];
@@ -45,7 +49,11 @@ export function SavingsView({
   totalObjetivoUSD,
   ocultarMontos,
   darkMode,
+  onSincronizar,
+  sincronizando = false,
 }: SavingsViewProps) {
+  const { success } = useToast();
+
   // Filtro de moneda
   const [filtroMoneda, setFiltroMoneda] = useState<'todas' | 'ARS' | 'USD'>('todas');
 
@@ -207,6 +215,22 @@ export function SavingsView({
                 USD (US$)
               </button>
             </div>
+
+            {onSincronizar && (
+              <button
+                type="button"
+                onClick={async () => {
+                  await onSincronizar();
+                  success('¡Reservas sincronizadas con Supabase!');
+                }}
+                disabled={sincronizando}
+                className="flex items-center gap-1.5 py-1.5 px-3 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 transition-all cursor-pointer disabled:opacity-50 active:scale-95 border border-slate-200/60 dark:border-slate-700/60"
+                title="Sincronizar reservas con Supabase"
+              >
+                <RefreshCw size={13} className={sincronizando ? 'animate-spin text-amber-500' : 'text-slate-400'} />
+                <span>{sincronizando ? 'Sincronizando...' : 'Sincronizar'}</span>
+              </button>
+            )}
 
             <button
               onClick={abrirCrearMeta}

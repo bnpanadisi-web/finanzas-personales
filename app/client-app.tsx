@@ -511,6 +511,8 @@ function FinanzasAppContent() {
             totalObjetivoUSD={savings.totalObjetivoUSD}
             ocultarMontos={ocultarMontos}
             darkMode={darkMode}
+            onSincronizar={savings.sincronizarConNube}
+            sincronizando={savings.sincronizandoNube}
           />
         </div>
       )}

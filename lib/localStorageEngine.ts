@@ -262,6 +262,34 @@ export function saveLocalInstallmentPurchases(purchases: InstallmentPurchase[]):
 }
 
 // ----------------------------------------------------
+// METAS DE AHORRO Y RESERVAS LOCALES
+// ----------------------------------------------------
+const KEY_SAVINGS = 'finanzas_savings_goals';
+
+export function getLocalSavingsGoals(): SavingsGoal[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(KEY_SAVINGS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error('Error leyendo reservas locales:', e);
+  }
+  return [];
+}
+
+export function saveLocalSavingsGoals(goals: SavingsGoal[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(KEY_SAVINGS, JSON.stringify(goals));
+  } catch (e) {
+    console.error('Error guardando reservas locales:', e);
+  }
+}
+
+// ----------------------------------------------------
 // COPIA DE SEGURIDAD GENERAL (PARA GOOGLE DRIVE / ARCHIVO)
 // ----------------------------------------------------
 export interface AppBackupData {

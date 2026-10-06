@@ -10,9 +10,49 @@ import {
 import { scheduleAutoBackup } from '@/services/googleBackup';
 import { syncCardsWithCloud, saveCloudCards } from '@/services/creditCardsSync';
 
+/**
+ * Normaliza compras en cuotas para asegurar que si se registraron cuotas pagadas previamente
+ * (ej. compras iniciadas en meses anteriores), el mes de inicio refleje correctamente la cuota 1
+ * y no se sobrecargue erróneamente en el mes actual.
+ */
+export function normalizeInstallmentPurchase(compra: InstallmentPurchase): InstallmentPurchase {
+  if (
+    typeof compra.cuotasPagasManuales === 'number' &&
+    compra.cuotasPagasManuales > 0 &&
+    compra.cuotasPagasManuales < compra.cuotasTotales
+  ) {
+    let startYear: number | null = null;
+    let startMonth: number | null = null;
+    if (compra.mesPrimerCuota) {
+      const [y, m] = compra.mesPrimerCuota.split('-').map(Number);
+      if (!isNaN(y) && !isNaN(m)) {
+        startYear = y;
+        startMonth = m;
+      }
+    }
+    if (startYear !== null && startMonth !== null) {
+      const hoy = new Date();
+      const diffToCurrent = (hoy.getFullYear() - startYear) * 12 + (hoy.getMonth() + 1 - startMonth);
+      if (diffToCurrent < compra.cuotasPagasManuales) {
+        const mesesARetroceder = compra.cuotasPagasManuales - diffToCurrent;
+        const fechaReal = new Date(startYear, startMonth - 1 - mesesARetroceder, 1);
+        const yStr = fechaReal.getFullYear();
+        const mStr = String(fechaReal.getMonth() + 1).padStart(2, '0');
+        return {
+          ...compra,
+          mesPrimerCuota: `${yStr}-${mStr}`,
+        };
+      }
+    }
+  }
+  return compra;
+}
+
 export function useCreditCards() {
   const [tarjetas, setTarjetas] = useState<CreditCard[]>(() => getLocalCreditCards());
-  const [compras, setCompras] = useState<InstallmentPurchase[]>(() => getLocalInstallmentPurchases());
+  const [compras, setCompras] = useState<InstallmentPurchase[]>(() =>
+    getLocalInstallmentPurchases().map(normalizeInstallmentPurchase)
+  );
   const [rawSelectedId, setRawSelectedId] = useState<string | null>(null);
   const [sincronizandoNube, setSincronizandoNube] = useState(false);
 
@@ -31,12 +71,14 @@ export function useCreditCards() {
   useEffect(() => {
     let activo = true;
     const initialCards = getLocalCreditCards();
-    const initialPurchases = getLocalInstallmentPurchases();
+    const initialPurchases = getLocalInstallmentPurchases().map(normalizeInstallmentPurchase);
     syncCardsWithCloud(initialCards, initialPurchases).then(res => {
       if (!activo) return;
       if (res.huboCambios) {
         setTarjetas(res.cards);
-        setCompras(res.purchases);
+        const norm = res.purchases.map(normalizeInstallmentPurchase);
+        setCompras(norm);
+        saveLocalInstallmentPurchases(norm);
       }
     });
 
@@ -213,10 +255,12 @@ export function useCreditCards() {
   const sincronizarConNube = useCallback(async () => {
     setSincronizandoNube(true);
     try {
-      const res = await syncCardsWithCloud(tarjetas, compras);
+      const res = await syncCardsWithCloud(tarjetas, compras.map(normalizeInstallmentPurchase));
       if (res.huboCambios) {
         setTarjetas(res.cards);
-        setCompras(res.purchases);
+        const norm = res.purchases.map(normalizeInstallmentPurchase);
+        setCompras(norm);
+        saveLocalInstallmentPurchases(norm);
       }
     } finally {
       setSincronizandoNube(false);
@@ -290,25 +334,39 @@ export function calculateInstallmentInfo(
     }
   }
 
-  // Diferencia de meses desde el inicio hasta el mes objetivo
-  const diffMonths = (anio - startYear) * 12 + (mes - startMonth);
-  // La cuota del mes objetivo: si diffMonths == 0 => cuota 1
-  const cuotaMesObjetivo = diffMonths + 1;
-
   // Cuántas cuotas pagadas considerar
   // Si el usuario especificó cuotasPagasManuales, tiene prioridad.
   // De lo contrario, consideramos pagadas las cuotas de meses previos al mes actual.
   let cuotasPagas = 0;
+  const hoyYear = hoy.getFullYear();
+  const hoyMonth = hoy.getMonth() + 1;
+
   if (typeof compra.cuotasPagasManuales === 'number') {
     cuotasPagas = compra.cuotasPagasManuales;
+
+    // Si el usuario especificó cuotas ya pagadas (P > 0) y todavía quedan cuotas pendientes (P < cuotasTotales),
+    // pero el mes de inicio configurado es reciente (diffToCurrent < P),
+    // retrocedemos el inicio para que la próxima cuota a pagar (P + 1) caiga en el mes actual.
+    if (cuotasPagas > 0 && cuotasPagas < compra.cuotasTotales) {
+      const diffToCurrent = (hoyYear - startYear) * 12 + (hoyMonth - startMonth);
+      if (diffToCurrent < cuotasPagas) {
+        const mesesARetroceder = cuotasPagas - diffToCurrent;
+        const fechaAjustada = new Date(startYear, startMonth - 1 - mesesARetroceder, 1);
+        startYear = fechaAjustada.getFullYear();
+        startMonth = fechaAjustada.getMonth() + 1;
+      }
+    }
   } else {
     // Automático: si el mes ya pasó respecto a hoy
-    const hoyYear = hoy.getFullYear();
-    const hoyMonth = hoy.getMonth() + 1;
     const diffToCurrent = (hoyYear - startYear) * 12 + (hoyMonth - startMonth);
     // Cuotas completadas en meses anteriores al actual
     cuotasPagas = Math.max(0, Math.min(compra.cuotasTotales, diffToCurrent));
   }
+
+  // Diferencia de meses desde el inicio real hasta el mes objetivo
+  const diffMonths = (anio - startYear) * 12 + (mes - startMonth);
+  // La cuota del mes objetivo: si diffMonths == 0 => cuota 1
+  const cuotaMesObjetivo = diffMonths + 1;
 
   const finalizada = cuotasPagas >= compra.cuotasTotales || compra.estado === 'finalizada';
   const saldoRestante = Math.max(0, (compra.cuotasTotales - cuotasPagas) * montoPorCuota);

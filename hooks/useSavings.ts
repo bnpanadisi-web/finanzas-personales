@@ -1,10 +1,10 @@
 'use client';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { SavingsGoal } from '@/types';
 import { useToast } from '@/components/ui/Toast';
 import { scheduleAutoBackup } from '@/services/googleBackup';
-
-const SAVINGS_STORAGE_KEY = 'finanzas_savings_goals';
+import { getLocalSavingsGoals, saveLocalSavingsGoals } from '@/lib/localStorageEngine';
+import { syncSavingsWithCloud, saveCloudSavings } from '@/services/savingsSync';
 
 const METAS_INICIALES: SavingsGoal[] = [
   {
@@ -37,25 +37,48 @@ const METAS_INICIALES: SavingsGoal[] = [
 
 export function useSavings() {
   const [goals, setGoals] = useState<SavingsGoal[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem(SAVINGS_STORAGE_KEY);
-        if (saved) return JSON.parse(saved);
-      } catch (e) {
-        console.error('Error cargando metas de ahorro:', e);
-      }
-    }
-    return METAS_INICIALES;
+    const local = getLocalSavingsGoals();
+    return local.length > 0 ? local : METAS_INICIALES;
   });
+  const [sincronizandoNube, setSincronizandoNube] = useState(false);
 
   const { success, error, info } = useToast();
 
+  // Sincronizar automáticamente con Supabase tomando el celular como fuente original
+  useEffect(() => {
+    let activo = true;
+    const initial = getLocalSavingsGoals();
+    const goalsToSync = initial.length > 0 ? initial : METAS_INICIALES;
+    syncSavingsWithCloud(goalsToSync).then(res => {
+      if (!activo) return;
+      if (res.huboCambios) {
+        setGoals(res.goals);
+      }
+    });
+
+    return () => {
+      activo = false;
+    };
+  }, []);
+
+  // Escuchar si se restaura backup o eventos externos
+  useEffect(() => {
+    const handleBackupUpdated = () => {
+      const updated = getLocalSavingsGoals();
+      if (updated.length > 0) setGoals(updated);
+    };
+
+    window.addEventListener('finanzas_backup_updated', handleBackupUpdated);
+    return () => {
+      window.removeEventListener('finanzas_backup_updated', handleBackupUpdated);
+    };
+  }, []);
+
   const persistGoals = useCallback((updated: SavingsGoal[]) => {
     setGoals(updated);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(SAVINGS_STORAGE_KEY, JSON.stringify(updated));
-      scheduleAutoBackup();
-    }
+    saveLocalSavingsGoals(updated);
+    saveCloudSavings(updated);
+    scheduleAutoBackup();
   }, []);
 
   const crearMeta = useCallback(
@@ -194,6 +217,18 @@ export function useSavings() {
     return goals.filter(g => g.moneda === 'USD').reduce((sum, g) => sum + g.montoObjetivo, 0);
   }, [goals]);
 
+  const sincronizarConNube = useCallback(async () => {
+    setSincronizandoNube(true);
+    try {
+      const res = await syncSavingsWithCloud(goals);
+      if (res.huboCambios) {
+        setGoals(res.goals);
+      }
+    } finally {
+      setSincronizandoNube(false);
+    }
+  }, [goals]);
+
   return {
     goals,
     crearMeta,
@@ -206,5 +241,7 @@ export function useSavings() {
     totalObjetivoARS,
     totalAhorradoUSD,
     totalObjetivoUSD,
+    sincronizarConNube,
+    sincronizandoNube,
   };
 }

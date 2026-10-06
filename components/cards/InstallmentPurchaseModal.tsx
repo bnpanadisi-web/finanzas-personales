@@ -279,7 +279,13 @@ function InstallmentPurchaseModalForm({
               <input
                 type="date"
                 value={fechaCompra}
-                onChange={e => setFechaCompra(e.target.value)}
+                onChange={e => {
+                  const nuevaFecha = e.target.value;
+                  setFechaCompra(nuevaFecha);
+                  if (!compraToEdit && nuevaFecha) {
+                    setMesPrimerCuota(nuevaFecha.substring(0, 7));
+                  }
+                }}
                 className={`w-full px-3 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none focus:border-sky-500 ${inputBg}`}
               />
             </div>
