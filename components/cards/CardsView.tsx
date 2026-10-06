@@ -45,6 +45,7 @@ export function CardsView({
     editarCompra,
     eliminarCompra,
     ajustarCuotasPagas,
+    pagarResumenMesTarjeta,
   } = useCreditCards();
 
   // Estados de modales
@@ -356,18 +357,51 @@ export function CardsView({
           {/* Tarjetas de Resumen Financiero de la Tarjeta */}
           {resumenSeleccionada && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 rounded-2xl bg-slate-950/60 border border-slate-800">
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  A Pagar Este Mes
-                </span>
-                <span className="text-base sm:text-lg font-black text-sky-400">
-                  {formatDinero(resumenSeleccionada.totalMesActualARS, 'ARS', 2)}
-                  {resumenSeleccionada.totalMesActualUSD > 0 && (
-                    <span className="text-xs text-emerald-400 ml-1">
-                      + {formatDinero(resumenSeleccionada.totalMesActualUSD, 'USD')}
+              <div className="flex flex-col justify-between">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    A Pagar Este Mes
+                  </span>
+                  <span className="text-base sm:text-lg font-black text-sky-400">
+                    {formatDinero(resumenSeleccionada.totalMesActualARS, 'ARS', 2)}
+                    {resumenSeleccionada.totalMesActualUSD > 0 && (
+                      <span className="text-xs text-emerald-400 ml-1">
+                        + {formatDinero(resumenSeleccionada.totalMesActualUSD, 'USD')}
+                      </span>
+                    )}
+                  </span>
+                </div>
+
+                {/* Botón para marcar el resumen / cuotas de este mes como pagadas */}
+                <div className="mt-2">
+                  {resumenSeleccionada.totalMesActualARS > 0 || resumenSeleccionada.totalMesActualUSD > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cant = pagarResumenMesTarjeta(tarjetaSeleccionada.id);
+                        if (cant > 0) {
+                          success(
+                            `¡Tarjeta marcada como paga! (${cant} ${
+                              cant === 1 ? 'cuota abonada' : 'cuotas abonadas'
+                            })`
+                          );
+                        } else {
+                          success('La tarjeta ya se encuentra al día para este mes.');
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 text-[11px] font-extrabold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-sm"
+                      title="Marcar todas las cuotas de este mes como pagadas"
+                    >
+                      <CheckCircle2 size={13} />
+                      <span>Marcar mes como pago</span>
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400/90 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                      <CheckCircle2 size={12} />
+                      Mes al día / Pagado
                     </span>
                   )}
-                </span>
+                </div>
               </div>
 
               <div>
@@ -545,38 +579,9 @@ export function CardsView({
                       </div>
                     </div>
 
-                    {/* Detalle Mes a Mes: Última Cuota Paga y Próxima a Pagar */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-800/60 text-xs">
-                      {/* Última Cuota Paga */}
-                      <div className="flex items-start gap-2 p-2 rounded-xl bg-slate-900/60 border border-slate-800">
-                        <CheckCircle2 size={15} className="text-emerald-400 shrink-0 mt-0.5" />
-                        <div>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                            Última cuota paga
-                          </span>
-                          <span className="text-xs font-bold text-slate-200">
-                            {info.textoUltimaPaga}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Próxima a Pagar */}
-                      <div className="flex items-start gap-2 p-2 rounded-xl bg-slate-900/60 border border-slate-800">
-                        <Clock size={15} className="text-sky-400 shrink-0 mt-0.5" />
-                        <div>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                            Próxima a pagar
-                          </span>
-                          <span className="text-xs font-bold text-sky-300">
-                            {info.textoProximaPagar}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
                     {/* Controles para cambiar cuotas pagadas rápidamente */}
                     {!info.finalizada && (
-                      <div className="flex items-center justify-between pt-1 text-[11px]">
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-800/60 text-[11px]">
                         <span className="text-slate-400">
                           Saldo restante: <strong className="text-slate-200">{formatDinero(info.saldoRestante, compra.moneda, 0)}</strong>
                         </span>
@@ -584,6 +589,7 @@ export function CardsView({
                         <div className="flex items-center gap-1.5">
                           {info.cuotasPagas > 0 && (
                             <button
+                              type="button"
                               onClick={() => ajustarCuotasPagas(compra.id, info.cuotasPagas - 1)}
                               className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-[10px] transition-colors cursor-pointer"
                               title="Restar 1 cuota pagada"
@@ -593,6 +599,7 @@ export function CardsView({
                           )}
                           {info.cuotasPagas < compra.cuotasTotales && (
                             <button
+                              type="button"
                               onClick={() => {
                                 ajustarCuotasPagas(compra.id, info.cuotasPagas + 1);
                                 success(`¡Cuota ${info.cuotasPagas + 1} marcada como pagada!`);

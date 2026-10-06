@@ -43,9 +43,7 @@ function InstallmentPurchaseModalForm({
   const [cuotasTotales, setCuotasTotales] = useState<number>(compraToEdit?.cuotasTotales || 6);
   const [fechaCompra, setFechaCompra] = useState<string>(compraToEdit?.fechaCompra || hoyIso);
   const [mesPrimerCuota, setMesPrimerCuota] = useState<string>(compraToEdit?.mesPrimerCuota || mesActualIso);
-  const [categoria, setCategoria] = useState<string>(
-    compraToEdit?.categoria || (categorias.length > 0 ? categorias[0].nombre : '')
-  );
+  const [categoria, setCategoria] = useState<string>(compraToEdit?.categoria || '');
   const [cuotasPagasManuales, setCuotasPagasManuales] = useState<number | ''>(
     typeof compraToEdit?.cuotasPagasManuales === 'number' ? compraToEdit.cuotasPagasManuales : ''
   );

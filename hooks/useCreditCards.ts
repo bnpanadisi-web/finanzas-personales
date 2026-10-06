@@ -152,6 +152,35 @@ export function useCreditCards() {
     [compras]
   );
 
+  // MARCAR COMO PAGAS TODAS LAS CUOTAS VIGENTES DE ESTE MES PARA UNA TARJETA
+  const pagarResumenMesTarjeta = useCallback(
+    (tarjetaId: string): number => {
+      let cuotasAbonadas = 0;
+      const updated: InstallmentPurchase[] = compras.map(c => {
+        if (c.tarjetaId !== tarjetaId) return c;
+        const info = calculateInstallmentInfo(c);
+        if (info.finalizada) return c;
+
+        // Si tiene una cuota pendiente para el mes actual o atrasada
+        if (info.cuotaPendienteEsteMes || (info.esVigenteEsteMes && info.cuotasPagas < info.cuotaActualMes)) {
+          cuotasAbonadas++;
+          const nuevoTotal = Math.min(c.cuotasTotales, info.cuotaActualMes);
+          const estado: 'activa' | 'finalizada' = nuevoTotal >= c.cuotasTotales ? 'finalizada' : 'activa';
+          return { ...c, cuotasPagasManuales: nuevoTotal, estado };
+        }
+        return c;
+      });
+
+      if (cuotasAbonadas > 0) {
+        setCompras(updated);
+        saveLocalInstallmentPurchases(updated);
+        scheduleAutoBackup();
+      }
+      return cuotasAbonadas;
+    },
+    [compras]
+  );
+
   return {
     tarjetas,
     compras,
@@ -164,6 +193,7 @@ export function useCreditCards() {
     editarCompra,
     eliminarCompra,
     ajustarCuotasPagas,
+    pagarResumenMesTarjeta,
   };
 }
 
@@ -177,6 +207,7 @@ export interface PurchaseCalculatedInfo {
   cuotaActualMes: number; // Número de cuota correspondiente al mes consultado (1 a N, o 0 si aún no empieza, o > N si terminó)
   saldoRestante: number;
   esVigenteEsteMes: boolean;
+  cuotaPendienteEsteMes: boolean;
   finalizada: boolean;
   textoUltimaPaga: string;
   textoProximaPagar: string;
@@ -240,6 +271,8 @@ export function calculateInstallmentInfo(
 
   // ¿Entra una cuota a pagar este mes específico?
   const esVigenteEsteMes = cuotaMesObjetivo >= 1 && cuotaMesObjetivo <= compra.cuotasTotales;
+  // ¿La cuota de este mes está todavía pendiente de pago?
+  const cuotaPendienteEsteMes = esVigenteEsteMes && cuotasPagas < cuotaMesObjetivo && !finalizada;
 
   // Texto: Última cuota paga
   let textoUltimaPaga = 'Ninguna cuota paga aún';
@@ -267,6 +300,7 @@ export function calculateInstallmentInfo(
     cuotaActualMes: cuotaMesObjetivo,
     saldoRestante,
     esVigenteEsteMes,
+    cuotaPendienteEsteMes,
     finalizada,
     textoUltimaPaga,
     textoProximaPagar,
@@ -298,7 +332,7 @@ export function calculateCardSummary(card: CreditCard, compras: InstallmentPurch
       }
     }
 
-    if (info.esVigenteEsteMes && !info.finalizada) {
+    if (info.cuotaPendienteEsteMes) {
       if (c.moneda === 'USD') {
         totalMesActualUSD += info.montoPorCuota;
       } else {
