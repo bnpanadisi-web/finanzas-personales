@@ -8,11 +8,13 @@ import {
   saveLocalInstallmentPurchases,
 } from '@/lib/localStorageEngine';
 import { scheduleAutoBackup } from '@/services/googleBackup';
+import { syncCardsWithCloud, saveCloudCards } from '@/services/creditCardsSync';
 
 export function useCreditCards() {
   const [tarjetas, setTarjetas] = useState<CreditCard[]>(() => getLocalCreditCards());
   const [compras, setCompras] = useState<InstallmentPurchase[]>(() => getLocalInstallmentPurchases());
   const [rawSelectedId, setRawSelectedId] = useState<string | null>(null);
+  const [sincronizandoNube, setSincronizandoNube] = useState(false);
 
   const tarjetaSeleccionadaId = useMemo(() => {
     if (rawSelectedId && tarjetas.some(t => t.id === rawSelectedId)) {
@@ -23,6 +25,24 @@ export function useCreditCards() {
 
   const setTarjetaSeleccionadaId = useCallback((id: string | null) => {
     setRawSelectedId(id);
+  }, []);
+
+  // Sincronizar automáticamente con Supabase respetando el celular como fuente original
+  useEffect(() => {
+    let activo = true;
+    const initialCards = getLocalCreditCards();
+    const initialPurchases = getLocalInstallmentPurchases();
+    syncCardsWithCloud(initialCards, initialPurchases).then(res => {
+      if (!activo) return;
+      if (res.huboCambios) {
+        setTarjetas(res.cards);
+        setCompras(res.purchases);
+      }
+    });
+
+    return () => {
+      activo = false;
+    };
   }, []);
 
   // Sincronizar si se restaura backup o eventos externos
@@ -50,10 +70,11 @@ export function useCreditCards() {
       setTarjetas(updated);
       saveLocalCreditCards(updated);
       setTarjetaSeleccionadaId(card.id);
+      saveCloudCards(updated, compras);
       scheduleAutoBackup();
       return card;
     },
-    [tarjetas, setTarjetaSeleccionadaId]
+    [tarjetas, compras, setTarjetaSeleccionadaId]
   );
 
   // EDITAR TARJETA
@@ -62,10 +83,11 @@ export function useCreditCards() {
       const updated = tarjetas.map(t => (t.id === id ? { ...t, ...updates } : t));
       setTarjetas(updated);
       saveLocalCreditCards(updated);
+      saveCloudCards(updated, compras);
       scheduleAutoBackup();
       return true;
     },
-    [tarjetas]
+    [tarjetas, compras]
   );
 
   // ELIMINAR TARJETA (Y sus compras asociadas)
@@ -84,6 +106,7 @@ export function useCreditCards() {
         setRawSelectedId(null);
       }
 
+      saveCloudCards(updatedTarjetas, updatedCompras);
       scheduleAutoBackup();
       return true;
     },
@@ -101,10 +124,11 @@ export function useCreditCards() {
       const updated = [purchase, ...compras];
       setCompras(updated);
       saveLocalInstallmentPurchases(updated);
+      saveCloudCards(tarjetas, updated);
       scheduleAutoBackup();
       return purchase;
     },
-    [compras]
+    [tarjetas, compras]
   );
 
   // EDITAR COMPRA
@@ -113,10 +137,11 @@ export function useCreditCards() {
       const updated = compras.map(c => (c.id === id ? { ...c, ...updates } : c));
       setCompras(updated);
       saveLocalInstallmentPurchases(updated);
+      saveCloudCards(tarjetas, updated);
       scheduleAutoBackup();
       return true;
     },
-    [compras]
+    [tarjetas, compras]
   );
 
   // ELIMINAR COMPRA
@@ -125,10 +150,11 @@ export function useCreditCards() {
       const updated = compras.filter(c => c.id !== id);
       setCompras(updated);
       saveLocalInstallmentPurchases(updated);
+      saveCloudCards(tarjetas, updated);
       scheduleAutoBackup();
       return true;
     },
-    [compras]
+    [tarjetas, compras]
   );
 
   // MARCAR O CAMBIAR CUOTAS PAGADAS
@@ -146,10 +172,11 @@ export function useCreditCards() {
 
       setCompras(updated);
       saveLocalInstallmentPurchases(updated);
+      saveCloudCards(tarjetas, updated);
       scheduleAutoBackup();
       return true;
     },
-    [compras]
+    [tarjetas, compras]
   );
 
   // MARCAR COMO PAGAS TODAS LAS CUOTAS VIGENTES DE ESTE MES PARA UNA TARJETA
@@ -174,12 +201,27 @@ export function useCreditCards() {
       if (cuotasAbonadas > 0) {
         setCompras(updated);
         saveLocalInstallmentPurchases(updated);
+        saveCloudCards(tarjetas, updated);
         scheduleAutoBackup();
       }
       return cuotasAbonadas;
     },
-    [compras]
+    [tarjetas, compras]
   );
+
+  // Forzar sincronización manual con la nube
+  const sincronizarConNube = useCallback(async () => {
+    setSincronizandoNube(true);
+    try {
+      const res = await syncCardsWithCloud(tarjetas, compras);
+      if (res.huboCambios) {
+        setTarjetas(res.cards);
+        setCompras(res.purchases);
+      }
+    } finally {
+      setSincronizandoNube(false);
+    }
+  }, [tarjetas, compras]);
 
   return {
     tarjetas,
@@ -194,6 +236,8 @@ export function useCreditCards() {
     eliminarCompra,
     ajustarCuotasPagas,
     pagarResumenMesTarjeta,
+    sincronizarConNube,
+    sincronizandoNube,
   };
 }
 

@@ -19,6 +19,7 @@ import {
   Edit3,
   TrendingDown,
   ShoppingBag,
+  RefreshCw,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 
@@ -46,6 +47,8 @@ export function CardsView({
     eliminarCompra,
     ajustarCuotasPagas,
     pagarResumenMesTarjeta,
+    sincronizarConNube,
+    sincronizandoNube,
   } = useCreditCards();
 
   // Estados de modales
@@ -231,6 +234,21 @@ export function CardsView({
 
           <div className="flex items-center gap-2">
             <button
+              type="button"
+              onClick={async () => {
+                await sincronizarConNube();
+                success('¡Sincronizado con Supabase!');
+              }}
+              disabled={sincronizandoNube}
+              className="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+              title="Sincronizar tarjetas y compras con la nube de Supabase"
+            >
+              <RefreshCw size={14} className={sincronizandoNube ? 'animate-spin text-sky-400' : 'text-slate-400'} />
+              <span>{sincronizandoNube ? 'Sincronizando...' : 'Sincronizar'}</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => {
                 setTarjetaAEditar(null);
                 setModalTarjetaAbierto(true);

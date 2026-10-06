@@ -64,7 +64,9 @@ export async function getTransactions(): Promise<Transaction[]> {
       return getLocalTransactions();
     }
 
-    const rawList = (data || []) as RawSupabaseRegistro[];
+    const rawList = ((data || []) as RawSupabaseRegistro[]).filter(
+      r => r.tipo === 'ingreso' || r.tipo === 'gasto' || r.tipo === 'transferencia'
+    );
 
     return rawList.map(row => {
       let cuentaDestino: string | undefined = undefined;
