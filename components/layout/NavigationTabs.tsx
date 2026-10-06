@@ -77,8 +77,12 @@ export function NavigationTabs({
           const isActive = activeTab === t.id;
           return (
             <button
+              type="button"
               key={t.id}
-              onClick={() => onChangeTab(t.id)}
+              onClick={e => {
+                e.preventDefault();
+                onChangeTab(t.id);
+              }}
               className={`sm:flex-1 py-2 sm:py-2.5 px-1 sm:px-3 rounded-xl font-bold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 transition-all cursor-pointer ${
                 isActive
                   ? darkMode

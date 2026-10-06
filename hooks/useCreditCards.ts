@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { CreditCard, InstallmentPurchase } from '@/types';
 import {
   getLocalCreditCards,
@@ -138,9 +138,9 @@ export function useCreditCards() {
       if (!compra) return false;
 
       const clamped = Math.max(0, Math.min(compra.cuotasTotales, cantidadPagas));
-      const estado = clamped >= compra.cuotasTotales ? 'finalizada' : 'activa';
+      const estado: 'activa' | 'finalizada' = clamped >= compra.cuotasTotales ? 'finalizada' : 'activa';
 
-      const updated = compras.map(c =>
+      const updated: InstallmentPurchase[] = compras.map(c =>
         c.id === compraId ? { ...c, cuotasPagasManuales: clamped, estado } : c
       );
 

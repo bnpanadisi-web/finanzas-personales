@@ -98,7 +98,7 @@ export async function authenticateWithBiometrics(): Promise<{
             userVerification: 'required',
             allowCredentials: [
               {
-                id: rawId,
+                id: rawId as BufferSource,
                 type: 'public-key',
                 transports: ['internal'],
               },
