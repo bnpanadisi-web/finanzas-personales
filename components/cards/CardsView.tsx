@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { CreditCard, InstallmentPurchase, Category } from '@/types';
 import { CreditCardVisual } from './CreditCardVisual';
 import { CardModal } from './CardModal';
@@ -20,6 +20,8 @@ import {
   TrendingDown,
   ShoppingBag,
   RefreshCw,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 
@@ -64,6 +66,84 @@ export function CardsView({
   const { success } = useToast();
 
   const tarjetaSeleccionada = tarjetas.find(t => t.id === tarjetaSeleccionadaId) || tarjetas[0] || null;
+
+  // Referencias y control de carrusel horizontal para celulares
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const cardElementsRef = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const currentIndex = Math.max(
+    0,
+    tarjetas.findIndex(t => t.id === tarjetaSeleccionada?.id)
+  );
+
+  const scrollToCard = useCallback(
+    (id: string) => {
+      setTarjetaSeleccionadaId(id);
+      const el = cardElementsRef.current[id];
+      if (el) {
+        el.scrollIntoView({
+          behavior: 'smooth',
+          inline: 'center',
+          block: 'nearest',
+        });
+      }
+    },
+    [setTarjetaSeleccionadaId]
+  );
+
+  const goToPrevCard = useCallback(() => {
+    if (currentIndex > 0) {
+      scrollToCard(tarjetas[currentIndex - 1].id);
+    }
+  }, [currentIndex, tarjetas, scrollToCard]);
+
+  const goToNextCard = useCallback(() => {
+    if (currentIndex < tarjetas.length - 1) {
+      scrollToCard(tarjetas[currentIndex + 1].id);
+    }
+  }, [currentIndex, tarjetas, scrollToCard]);
+
+  const handleCarouselScroll = useCallback(() => {
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    scrollTimeoutRef.current = setTimeout(() => {
+      if (!carouselRef.current || tarjetas.length === 0) return;
+      const container = carouselRef.current;
+      const containerCenter = container.scrollLeft + container.clientWidth / 2;
+
+      let closestCardId = tarjetas[0].id;
+      let minDistance = Infinity;
+
+      for (const card of tarjetas) {
+        const el = cardElementsRef.current[card.id];
+        if (el) {
+          const cardCenter = el.offsetLeft + el.offsetWidth / 2;
+          const distance = Math.abs(containerCenter - cardCenter);
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestCardId = card.id;
+          }
+        }
+      }
+
+      if (closestCardId && closestCardId !== tarjetaSeleccionada?.id) {
+        setTarjetaSeleccionadaId(closestCardId);
+      }
+    }, 60);
+  }, [tarjetas, tarjetaSeleccionada, setTarjetaSeleccionadaId]);
+
+  // Centrar tarjeta seleccionada al cargar la vista
+  useEffect(() => {
+    const id = tarjetaSeleccionada?.id;
+    if (id && cardElementsRef.current[id]) {
+      cardElementsRef.current[id]?.scrollIntoView({
+        behavior: 'auto',
+        inline: 'center',
+        block: 'nearest',
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Cálculos globales de todas las tarjetas
   let totalGlobalMesARS = 0;
@@ -284,36 +364,130 @@ export function CardsView({
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
-            {tarjetas.map(card => {
-              const summary = calculateCardSummary(card, compras);
-              const isSelected = tarjetaSeleccionada?.id === card.id;
+          <div>
+            {/* VISTA MÓVIL (md:hidden): Carrusel deslizable horizontalmente para optimizar pantalla */}
+            <div className="md:hidden">
+              <div
+                ref={carouselRef}
+                onScroll={handleCarouselScroll}
+                className="flex overflow-x-auto snap-x snap-mandatory gap-3 pb-2 pt-1 px-4 -mx-4 scroll-smooth [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+              >
+                {tarjetas.map(card => {
+                  const summary = calculateCardSummary(card, compras);
+                  const isSelected = tarjetaSeleccionada?.id === card.id;
 
-              return (
-                <div key={card.id} className="flex flex-col items-center">
-                  <CreditCardVisual
-                    card={card}
-                    isSelected={isSelected}
-                    onClick={() => setTarjetaSeleccionadaId(card.id)}
-                    resumenVencimientoTexto={summary.textoVencimiento}
-                    resumenVencimientoEstado={summary.estadoVencimiento}
-                    totalMesARS={summary.totalMesActualARS}
-                  />
+                  return (
+                    <div
+                      key={card.id}
+                      ref={el => {
+                        cardElementsRef.current[card.id] = el;
+                      }}
+                      className="shrink-0 snap-center w-[84vw] max-w-[340px] flex flex-col items-center"
+                    >
+                      <CreditCardVisual
+                        card={card}
+                        isSelected={isSelected}
+                        onClick={() => scrollToCard(card.id)}
+                        resumenVencimientoTexto={summary.textoVencimiento}
+                        resumenVencimientoEstado={summary.estadoVencimiento}
+                        totalMesARS={summary.totalMesActualARS}
+                      />
 
-                  {/* Barra rápida debajo de cada dibujo para indicar selección */}
-                  <div className="mt-2 flex items-center gap-2 text-[11px]">
-                    <span className={`font-bold transition-colors ${isSelected ? 'text-sky-400' : 'text-slate-400'}`}>
-                      {card.alias}
+                      {/* Barra rápida debajo de cada tarjeta */}
+                      <div className="mt-2 flex items-center gap-2 text-[11px]">
+                        <span className={`font-bold transition-colors ${isSelected ? 'text-sky-400' : 'text-slate-400'}`}>
+                          {card.alias}
+                        </span>
+                        {isSelected && (
+                          <span className="px-1.5 py-0.2 bg-sky-500/20 text-sky-400 rounded-md text-[9px] font-extrabold">
+                            Seleccionada
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Controles y puntos de navegación para celular */}
+              {tarjetas.length > 1 && (
+                <div className="flex items-center justify-between pt-3 px-1">
+                  <button
+                    type="button"
+                    onClick={goToPrevCard}
+                    disabled={currentIndex <= 0}
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-25 disabled:cursor-not-allowed transition-all cursor-pointer active:scale-95 border border-slate-700/60"
+                    aria-label="Tarjeta anterior"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+
+                  <div className="flex flex-col items-center gap-1">
+                    <div className="flex items-center gap-1.5">
+                      {tarjetas.map((card, idx) => (
+                        <button
+                          key={card.id}
+                          type="button"
+                          onClick={() => scrollToCard(card.id)}
+                          className={`transition-all rounded-full cursor-pointer ${
+                            idx === currentIndex
+                              ? 'w-6 h-2 bg-sky-400 shadow-sm shadow-sky-400/50'
+                              : 'w-2 h-2 bg-slate-700 hover:bg-slate-600'
+                          }`}
+                          aria-label={`Ir a tarjeta ${card.alias}`}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-semibold">
+                      {currentIndex + 1} de {tarjetas.length} · Desliza para cambiar
                     </span>
-                    {isSelected && (
-                      <span className="px-1.5 py-0.2 bg-sky-500/20 text-sky-400 rounded-md text-[9px] font-extrabold">
-                        Seleccionada
-                      </span>
-                    )}
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={goToNextCard}
+                    disabled={currentIndex >= tarjetas.length - 1}
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-25 disabled:cursor-not-allowed transition-all cursor-pointer active:scale-95 border border-slate-700/60"
+                    aria-label="Tarjeta siguiente"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
                 </div>
-              );
-            })}
+              )}
+            </div>
+
+            {/* VISTA TABLET Y COMPUTADORA (hidden md:grid): Cuadrícula completa interactiva */}
+            <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
+              {tarjetas.map(card => {
+                const summary = calculateCardSummary(card, compras);
+                const isSelected = tarjetaSeleccionada?.id === card.id;
+
+                return (
+                  <div key={card.id} className="flex flex-col items-center">
+                    <CreditCardVisual
+                      card={card}
+                      isSelected={isSelected}
+                      onClick={() => setTarjetaSeleccionadaId(card.id)}
+                      resumenVencimientoTexto={summary.textoVencimiento}
+                      resumenVencimientoEstado={summary.estadoVencimiento}
+                      totalMesARS={summary.totalMesActualARS}
+                    />
+
+                    {/* Barra rápida debajo de cada dibujo para indicar selección */}
+                    <div className="mt-2 flex items-center gap-2 text-[11px]">
+                      <span className={`font-bold transition-colors ${isSelected ? 'text-sky-400' : 'text-slate-400'}`}>
+                        {card.alias}
+                      </span>
+                      {isSelected && (
+                        <span className="px-1.5 py-0.2 bg-sky-500/20 text-sky-400 rounded-md text-[9px] font-extrabold">
+                          Seleccionada
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
